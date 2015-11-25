@@ -1,0 +1,25 @@
+# Devstack settings
+
+# CEPH_PLUGIN_DIR contains the path to devstack-plugin-ceph/devstack directory
+
+CEPH_PLUGIN_DIR=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
+
+# HACK: Disable devstack ceph hook scripts
+# TODO: Remove this hack once DEVSTACK_GATE_CEPH
+#       is removed from the ceph plugin job defn
+
+disable_service ceph
+
+# Add ceph plugin specific settings
+# NOTE: Currently these are redundant since ceph
+#       plugin job defn defines them already, but
+#       once DEVSTACK_GATE_CEPH is removed, these
+#       won't be redundant, so its ok to have these
+#       anyways.
+
+TEMPEST_STORAGE_PROTOCOL=ceph
+CEPH_LOOPBACK_DISK_SIZE=8G
+
+# Source plugin's lib/ceph
+
+source $CEPH_PLUGIN_DIR/lib/ceph

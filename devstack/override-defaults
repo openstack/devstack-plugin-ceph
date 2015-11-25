@@ -1,0 +1,4 @@
+# Plug-in overrides
+
+CINDER_DRIVER=ceph
+CINDER_ENABLED_BACKENDS=ceph
