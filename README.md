@@ -16,9 +16,8 @@ As part of ```unstack.sh``` | ```clean.sh```:
 
 * Tears down the Ceph cluster and its related services
 
-This plugin also gets used to configure Ceph as the storage backend for the upstream Ceph CI job named
+This plugin also gets used to configure Ceph as the storage backend for the upstream Ceph CI job named ```gate-tempest-dsvm-full-devstack-plugin-ceph```
 
-```gate-tempest-dsvm-full-devstack-plugin-ceph```
 
 # How to use
 
