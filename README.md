@@ -30,6 +30,8 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 # TODOs
 
 * Configuring Rados Gateway with Keystone for Swift
+* Add support for Ceph Infernalis release
+* Add support for distro specific ceph repos
 
 # Bugs
 
