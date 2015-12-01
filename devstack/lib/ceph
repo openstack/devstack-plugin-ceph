@@ -497,12 +497,11 @@ if is_ubuntu; then
     | sudo tee /etc/apt/sources.list.d/ceph.list
 
     install_package ceph radosgw libnss3-tools
-elif is_fedora; then
-    sudo rpm --import 'https://download.ceph.com/keys/release.asc'
-
-    sudo rpm \
-    -Uvh http://ceph.com/rpm/fc20/x86_64/ceph-${CEPH_RELEASE}.el6.noarch.rpm
-
+else
+    # Install directly from distro repos. See LP bug 1521073 for more details.
+    # If distro doesn't carry latest ceph, users can install latest ceph repo
+    # for their distro (if available) from download.ceph.com and then do
+    # stack.sh
     install_package ceph ceph-radosgw
 fi
 }
