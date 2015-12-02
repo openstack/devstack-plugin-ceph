@@ -4,12 +4,6 @@
 
 CEPH_PLUGIN_DIR=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
 
-# HACK: Disable devstack ceph hook scripts
-# TODO: Remove this hack once DEVSTACK_GATE_CEPH
-#       is removed from the ceph plugin job defn
-
-disable_service ceph
-
 # Add ceph plugin specific settings
 # NOTE: Currently these are redundant since ceph
 #       plugin job defn defines them already, but
