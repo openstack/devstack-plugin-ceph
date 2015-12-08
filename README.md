@@ -25,7 +25,18 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 
     ```enable_plugin devstack-plugin-ceph git://git.openstack.org/openstack/devstack-plugin-ceph```
 
+  _Note: Ceph can be disabled as the storage backend for a service with the
+  following setting in the ```localrc``` file,_
+
+    ```
+    ENABLE_CEPH_$SERVICE=False
+    ```
+
+  _where $SERVICE can be CINDER, C_BAK, GLANCE, or NOVA corresponding to
+  Cinder, Cinder Backup, Glance, and Nova services respectively._
+
 * Then run ```stack.sh``` and wait for the _magic_ to happen :)
+
 
 # TODOs
 

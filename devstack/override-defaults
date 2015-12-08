@@ -1,4 +1,11 @@
 # Plug-in overrides
 
-CINDER_DRIVER=ceph
-CINDER_ENABLED_BACKENDS=ceph
+ENABLE_CEPH_CINDER=$(trueorfalse True ENABLE_CEPH_CINDER)
+ENABLE_CEPH_C_BAK=$(trueorfalse True ENABLE_CEPH_C_BAK)
+ENABLE_CEPH_GLANCE=$(trueorfalse True ENABLE_CEPH_GLANCE)
+ENABLE_CEPH_NOVA=$(trueorfalse True ENABLE_CEPH_NOVA)
+
+if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
+    CINDER_DRIVER=ceph
+    CINDER_ENABLED_BACKENDS=ceph
+fi
