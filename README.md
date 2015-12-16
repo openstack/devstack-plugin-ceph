@@ -9,7 +9,8 @@ As part of ```stack.sh```:
 
 * Installs Ceph (client and server) packages
 * Creates a Ceph cluster for use with openstack services
-* Configures Ceph as the storage backend for Cinder, Cinder Backup, Nova & Glance services
+* Configures Ceph as the storage backend for Cinder, Cinder Backup, Nova,
+  Manila (not by default), and Glance services
 * Supports Ceph cluster running local or remote to openstack services
 
 As part of ```unstack.sh``` | ```clean.sh```:
@@ -25,15 +26,26 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 
     ```enable_plugin devstack-plugin-ceph git://git.openstack.org/openstack/devstack-plugin-ceph```
 
-  _Note: Ceph can be disabled as the storage backend for a service with the
-  following setting in the ```localrc``` file,_
+* Ceph is setup as the default storage backend for Cinder, Cinder Backup,
+  Glance and Nova services. To disable Ceph disable as the storage backend
+  for a service use the following setting in the ```localrc``` file,
 
     ```
     ENABLE_CEPH_$SERVICE=False
     ```
 
-  _where $SERVICE can be CINDER, C_BAK, GLANCE, or NOVA corresponding to
-  Cinder, Cinder Backup, Glance, and Nova services respectively._
+  where $SERVICE can be CINDER, C_BAK, GLANCE or NOVA corresponding to
+  Cinder, Cinder Backup, Glance, and Nova services respectively.
+
+* Ceph can be enabled as the storage backend for Manila with the following
+  setting  in the ```localrc``` file,
+
+    ```
+    ENABLE_CEPH_MANILA=True
+    ```
+
+  Make sure that the manila plugin is enabled before devstack-plugin-ceph in
+  the ```localrc``` file.
 
 * Then run ```stack.sh``` and wait for the _magic_ to happen :)
 
@@ -43,6 +55,7 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 * Configuring Rados Gateway with Keystone for Swift
 * Add support for Ceph Infernalis release
 * Add support for distro specific ceph repos
+* Add Manila support for non-Ubuntu systems
 
 # Bugs
 
