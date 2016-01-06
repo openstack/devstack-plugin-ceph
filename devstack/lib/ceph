@@ -253,7 +253,7 @@ function configure_ceph {
         --create-keyring --name=mon. --add-key=$(ceph-authtool \
         --gen-print-key) --cap mon 'allow *'
 
-    sudo mkdir /var/lib/ceph/mon/ceph-$(hostname)
+    sudo mkdir -p /var/lib/ceph/mon/ceph-$(hostname)
 
     # create a default ceph configuration file
     cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
@@ -423,7 +423,7 @@ function configure_ceph_embedded_rgw {
     keystone-manage pki_setup --rebuild
 
     # radosgw needs to access keystone's revocation list
-    sudo mkdir ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+    sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
     sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
         sudo certutil \
         -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
