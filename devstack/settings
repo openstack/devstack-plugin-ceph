@@ -15,5 +15,24 @@ TEMPEST_STORAGE_PROTOCOL=ceph
 CEPH_LOOPBACK_DISK_SIZE=8G
 
 # Source plugin's lib/ceph
-
 source $CEPH_PLUGIN_DIR/lib/ceph
+
+# Set Manila related global variables used by Manila's DevStack plugin.
+if (is_ceph_enabled_for_service manila) && \
+[[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
+    MANILA_DHSS=$(trueorfalse False MANILA_DHSS)
+    ENABLED_SHARE_PROTOCOLS="CEPHFS"
+    MANILA_DEFAULT_SHARE_TYPE=cephfstype
+    # CephFSNative Driver does not yet support creation of shares from
+    # snapshot.
+    MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=False'
+
+    MANILA_ENABLED_BACKENDS=cephfsnative1
+    MANILA_CONFIGURE_GROUPS=cephfsnative1
+
+    MANILA_OPTGROUP_cephfsnative1_share_driver=manila.share.drivers.cephfs.CephFSNativeDriver
+    MANILA_OPTGROUP_cephfsnative1_driver_handles_share_servers=$MANILA_DHSS
+    MANILA_OPTGROUP_cephfsnative1_share_backend_name=CEPHFSNATIVE1
+    MANILA_OPTGROUP_cephfsnative1_cephfs_conf_path=${CEPH_CONF_FILE}
+    MANILA_OPTGROUP_cephfsnative1_cephfs_auth_id=${MANILA_CEPH_USER}
+fi

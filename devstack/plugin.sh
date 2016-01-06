@@ -40,6 +40,10 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Configuring libvirt secret"
         import_libvirt_secret_ceph
     fi
+    if is_ceph_enabled_for_service manila; then
+        echo_summary "Configuring Manila for Ceph"
+        configure_ceph_manila
+    fi
 
     if [ "$REMOTE_CEPH" = "False" ]; then
         if is_ceph_enabled_for_service glance; then
@@ -53,6 +57,10 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         if is_ceph_enabled_for_service cinder; then
             echo_summary "Configuring Cinder for Ceph"
             configure_ceph_embedded_cinder
+        fi
+        if is_ceph_enabled_for_service manila; then
+            echo_summary "Configuring Manila for Ceph"
+            configure_ceph_embedded_manila
         fi
         # FIXME: Fix this once radosgw service is running
 

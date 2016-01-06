@@ -3,6 +3,9 @@
 ENABLE_CEPH_CINDER=$(trueorfalse True ENABLE_CEPH_CINDER)
 ENABLE_CEPH_C_BAK=$(trueorfalse True ENABLE_CEPH_C_BAK)
 ENABLE_CEPH_GLANCE=$(trueorfalse True ENABLE_CEPH_GLANCE)
+# Disable Ceph as the default backend for Manila as the
+# CephFS Manila driver is WIP.
+ENABLE_CEPH_MANILA=$(trueorfalse False ENABLE_CEPH_MANILA)
 ENABLE_CEPH_NOVA=$(trueorfalse True ENABLE_CEPH_NOVA)
 
 if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
