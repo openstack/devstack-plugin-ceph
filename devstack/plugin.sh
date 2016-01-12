@@ -4,6 +4,11 @@ if [[ "$1" == "source" ]]; then
     # Initial source
     source $TOP_DIR/lib/ceph
 elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
+    if [[ "$ENABLE_CEPH_RGW" = "True" ]] && (is_service_enabled swift); then
+        die $LINENO \
+        "You cannot activate both Swift and Ceph Rados Gateway, \
+        please disable Swift or set ENABLE_CEPH_RGW=False"
+    fi
     echo_summary "Installing Ceph"
     check_os_support_ceph
     if [ "$REMOTE_CEPH" = "False" ]; then
@@ -62,18 +67,9 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
             echo_summary "Configuring Manila for Ceph"
             configure_ceph_embedded_manila
         fi
-        # FIXME: Fix this once radosgw service is running
-
-        #echo_summary "Configuring Rados Gateway with Keystone for Swift"
-        #configure_ceph_embedded_rgw
-    fi
-    if [ "$REMOTE_CEPH_RGW" = "True" ]; then
-        if is_service_enabled swift; then
-            die $LINENO \
-            "You can not activate both Swift and Ceph Rados Gateway, \
-            please disable Swift or set REMOTE_CEPH_RGW=False"
-        else
-            configure_ceph_remote_radosgw
+        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+            echo_summary "Configuring Rados Gateway with Keystone for Swift"
+            configure_ceph_embedded_rgw
         fi
     fi
 fi

@@ -217,7 +217,10 @@ fi
 }
 
 function cleanup_ceph_embedded {
-sudo killall -w -9 ceph-mon ceph-osd radosgw
+sudo killall -w -9 ceph-mon ceph-osd
+if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+    sudo killall -w -9 radosgw
+fi
 sudo rm -rf ${CEPH_DATA_DIR}/*/*
 if egrep -q ${CEPH_DATA_DIR} /proc/mounts; then
     sudo umount ${CEPH_DATA_DIR}
@@ -361,17 +364,21 @@ if is_ceph_enabled_for_service manila; then
     fi
 fi
 
+if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+    configure_ceph_rgw
+fi
+}
+
+function configure_ceph_rgw {
 # bootstrap rados gateway
-sudo mkdir ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
 sudo ceph auth get-or-create client.radosgw.$(hostname) \
 osd 'allow rwx' mon 'allow rw' \
--o /etc/ceph/ceph.client.radosgw.$(hostname).keyring
-
-sudo cp /etc/ceph/ceph.client.radosgw.$(hostname).keyring \
-${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
+-o ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
 
 if is_ubuntu; then
-    sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/{upstart,done}
+    sudo touch \
+    ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{upstart,done}
 else
     sudo touch \
     ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{sysvinit,done}
@@ -381,6 +388,24 @@ fi
 # "ceph" is the owner of files within ${CEPH_DATA_DIR}.
 if [[ $(echo $(get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
     sudo chown -R ceph. ${CEPH_DATA_DIR}
+fi
+
+if [[ ! "$(egrep "\[client.radosgw\]" ${CEPH_CONF_FILE})" ]]; then
+    cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+[client.radosgw.$(hostname)]
+host = $(hostname)
+keyring = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
+rgw socket path = /tmp/radosgw-$(hostname).sock
+log file = /var/log/ceph/radosgw-$(hostname).log
+rgw data = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+rgw print continue = false
+rgw frontends = civetweb port=${CEPH_RGW_PORT}
+rgw keystone url = http://${SERVICE_HOST}:35357
+rgw keystone admin token = ${SERVICE_TOKEN}
+rgw keystone accepted roles = Member, _member_, admin
+rgw s3 auth use keystone = true
+nss db path = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+EOF
 fi
 }
 
@@ -398,23 +423,8 @@ if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
     "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
 fi
 
-if [[ ! "$(egrep "\[client.radosgw\]" ${CEPH_CONF_FILE})" ]]; then
-    cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
-[client.radosgw.$(hostname)]
-host = $(hostname)
-keyring = /var/lib/ceph/radosgw/ceph-radosgw.$(hostname)/keyring
-rgw socket path = /tmp/radosgw-$(hostname).sock
-log file = /var/log/ceph/radosgw-$(hostname).log
-rgw data = /var/lib/ceph/radosgw/ceph-radosgw.$(hostname)
-rgw print continue = false
-rgw frontends = civetweb port=${CEPH_RGW_PORT}
-rgw keystone url = http://${SERVICE_HOST}:35357
-rgw keystone admin token = ${SERVICE_TOKEN}
-rgw keystone accepted roles = Member, _member_, admin
-rgw s3 auth use keystone = true
-nss db path = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
-EOF
-fi
+# Let keystone generate the certs, rgw needs these.
+keystone-manage pki_setup --rebuild
 
 # radosgw needs to access keystone's revocation list
 sudo mkdir ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
@@ -427,9 +437,13 @@ sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
 sudo certutil -A \
 -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
 -n signing_cert -t "P,P,P"
+
+# radosgw service is started here as it needs the keystone pki_setup as a
+# pre-requisite
+sudo start radosgw id=radosgw.$(hostname)
 }
 
-function configure_ceph_remote_radosgw {
+function configure_ceph_remote_rgw {
 if [[ -z "$CEPH_REMOTE_RGW_URL" ]]; then
     die $LINENO \
     "You activated REMOTE_CEPH_RGW thus CEPH_REMOTE_RGW_URL must be defined"
@@ -583,7 +597,9 @@ function init_ceph {
 # make sure to kill all ceph processes first
 sudo pkill -f ceph-mon || true
 sudo pkill -f ceph-osd || true
-sudo pkill -f radosgw || true
+if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+    sudo pkill -f radosgw || true
+fi
 if is_ceph_enabled_for_service manila; then
     sudo pkill -f ceph-mds || true
 fi
@@ -608,7 +624,7 @@ if is_ubuntu; then
 
         # Update package repo.
         REPOS_UPDATED=False
-        install_package ceph ceph-mds radosgw libnss3-tools
+        install_package ceph ceph-mds libnss3-tools
     else
         wget -q -O- 'https://download.ceph.com/keys/release.asc' \
         | sudo apt-key add -
@@ -618,15 +634,21 @@ if is_ubuntu; then
 
         # Update package repo.
         REPOS_UPDATED=False
-        install_package ceph radosgw libnss3-tools
+        install_package ceph libnss3-tools
     fi
 
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        install_package radosgw
+    fi
 else
     # Install directly from distro repos. See LP bug 1521073 for more details.
     # If distro doesn't carry latest ceph, users can install latest ceph repo
     # for their distro (if available) from download.ceph.com and then do
     # stack.sh
-    install_package ceph ceph-radosgw
+    install_package ceph
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        install_package ceph-radosgw
+    fi
 fi
 }
 
@@ -648,23 +670,22 @@ if is_ubuntu; then
 else
     sudo service ceph start
 fi
-
-# FIXME: Some issues with radosgw start, disabling it for now
-#sudo service radosgw start
 }
 
 # stop_ceph() - Stop running processes (non-screen)
 function stop_ceph {
 if is_ubuntu; then
-    sudo service ceph-mon-all stop > /dev/null 2>&1
-    sudo service ceph-osd-all stop > /dev/null 2>&1
+    sudo stop ceph-mon-all > /dev/null 2>&1
+    sudo stop ceph-osd-all > /dev/null 2>&1
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        sudo stop radosgw-all > /dev/null 2>&1
+    fi
     if is_ceph_enabled_for_service manila; then
         sudo service ceph-mds-all stop > /dev/null 2>&1
     fi
 else
     sudo service ceph stop > /dev/null 2>&1
 fi
-sudo service radosgw stop > /dev/null 2>&1
 }
 
 
