@@ -605,6 +605,10 @@ if is_ubuntu; then
         echo deb \
         http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/wip-manila \
         $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/ceph.list
+
+        # Update package repo.
+        REPOS_UPDATED=False
+        install_package ceph ceph-mds radosgw libnss3-tools
     else
         wget -q -O- 'https://download.ceph.com/keys/release.asc' \
         | sudo apt-key add -
@@ -612,11 +616,11 @@ if is_ubuntu; then
         echo deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) \
         main | sudo tee /etc/apt/sources.list.d/ceph.list
 
+        # Update package repo.
+        REPOS_UPDATED=False
+        install_package ceph radosgw libnss3-tools
     fi
 
-    # Update package repo.
-    REPOS_UPDATED=False
-    install_package ceph radosgw libnss3-tools
 else
     # Install directly from distro repos. See LP bug 1521073 for more details.
     # If distro doesn't carry latest ceph, users can install latest ceph repo
