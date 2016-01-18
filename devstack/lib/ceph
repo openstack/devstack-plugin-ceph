@@ -614,6 +614,7 @@ function install_ceph {
 if is_ubuntu; then
     # TODO (rraja): use wip-manila development repo until Ceph patches needed
     # by Manila's Ceph driver are available in a release package.
+    CEPH_PACKAGES="ceph libnss3-tools"
     if is_ceph_enabled_for_service manila; then
         wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
         | sudo apt-key add -
@@ -622,33 +623,40 @@ if is_ubuntu; then
         http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/wip-manila \
         $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/ceph.list
 
-        # Update package repo.
-        REPOS_UPDATED=False
-        install_package ceph ceph-mds libnss3-tools
+        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
     else
         wget -q -O- 'https://download.ceph.com/keys/release.asc' \
         | sudo apt-key add -
 
         echo deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) \
         main | sudo tee /etc/apt/sources.list.d/ceph.list
-
-        # Update package repo.
-        REPOS_UPDATED=False
-        install_package ceph libnss3-tools
     fi
 
     if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-        install_package radosgw
+        CEPH_PACKAGES="${CEPH_PACKAGES} radosgw"
     fi
+
+    # Update package repo.
+    REPOS_UPDATED=False
+    install_package ${CEPH_PACKAGES}
+
+
 else
     # Install directly from distro repos. See LP bug 1521073 for more details.
     # If distro doesn't carry latest ceph, users can install latest ceph repo
     # for their distro (if available) from download.ceph.com and then do
     # stack.sh
-    install_package ceph
+    CEPH_PACKAGES="ceph"
+    if is_ceph_enabled_for_service manila; then
+        CEPH_PACKAGES="${CEPH_PACKAGES} libcephfs1"
+    fi
+
     if [ "$ENABLE_CEPH_RGW" = "True" ]; then
         install_package ceph-radosgw
+        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-radosgw"
     fi
+
+    install_package ${CEPH_PACKAGES}
 fi
 }
 
