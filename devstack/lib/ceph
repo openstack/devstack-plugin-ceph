@@ -267,6 +267,7 @@ auth_client_required = cephx
 filestore_xattr_use_omap = true
 osd crush chooseleaf type = 0
 osd journal size = 100
+osd pool default size = ${CEPH_REPLICAS}
 EOF
 
 # bootstrap the ceph monitor
@@ -299,19 +300,6 @@ until [ -f ${CEPH_CONF_DIR}/ceph.client.admin.keyring ]; do
     fi
     sleep 5
 done
-
-# pools data and metadata were removed in the Giant release
-# so depending on the version we apply different commands
-local ceph_version
-ceph_version=$(get_ceph_version mon)
-# change pool replica size according to the CEPH_REPLICAS set by the user
-if [[ ${ceph_version%%.*} -eq 0 ]] && [[ ${ceph_version##*.} -lt 87 ]]; then
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set rbd size ${CEPH_REPLICAS}
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set data size ${CEPH_REPLICAS}
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set metadata size ${CEPH_REPLICAS}
-else
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set rbd size ${CEPH_REPLICAS}
-fi
 
 # create a simple rule to take OSDs instead of host with CRUSH
 # then apply this rules to the default pool
@@ -461,8 +449,6 @@ fi
 
 function configure_ceph_embedded_glance {
 # configure Glance service options, ceph pool, ceph user and ceph key
-sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-set ${GLANCE_CEPH_POOL} size ${CEPH_REPLICAS}
 if [[ $CEPH_REPLICAS -ne 1 ]]; then
     sudo ceph -c ${CEPH_CONF_FILE} osd pool \
     set ${GLANCE_CEPH_POOL} crush_ruleset ${RULE_ID}
@@ -511,10 +497,6 @@ function configure_ceph_manila {
 }
 
 function configure_ceph_embedded_manila {
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_DATA_POOL} size \
-        ${CEPH_REPLICAS}
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_METADATA_POOL} size \
-        ${CEPH_REPLICAS}
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
         sudo ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_DATA_POOL} \
             crush_ruleset ${RULE_ID}
@@ -525,8 +507,6 @@ function configure_ceph_embedded_manila {
 
 function configure_ceph_embedded_nova {
 # configure Nova service options, ceph pool, ceph user and ceph key
-sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-set ${NOVA_CEPH_POOL} size ${CEPH_REPLICAS}
 
 if [[ $CEPH_REPLICAS -ne 1 ]]; then
     sudo ceph -c ${CEPH_CONF_FILE} osd pool \
@@ -565,8 +545,6 @@ if ! is_ceph_enabled_for_service cinder; then
 
 function configure_ceph_embedded_cinder {
 # Configure Cinder service options, ceph pool, ceph user and ceph key
-sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-    set ${CINDER_CEPH_POOL} size ${CEPH_REPLICAS}
 
 if [[ $CEPH_REPLICAS -ne 1 ]]; then
     sudo ceph -c ${CEPH_CONF_FILE} osd pool \
