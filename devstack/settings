@@ -21,7 +21,7 @@ source $CEPH_PLUGIN_DIR/lib/ceph
 if (is_ceph_enabled_for_service manila) && \
 [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
     MANILA_DHSS=$(trueorfalse False MANILA_DHSS)
-    ENABLED_SHARE_PROTOCOLS="CEPHFS"
+    MANILA_ENABLED_SHARE_PROTOCOLS=CEPHFS
     MANILA_DEFAULT_SHARE_TYPE=cephfstype
     # CephFSNative Driver does not yet support creation of shares from
     # snapshot.
