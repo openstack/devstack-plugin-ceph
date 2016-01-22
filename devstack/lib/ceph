@@ -217,7 +217,7 @@ fi
 }
 
 function cleanup_ceph_embedded {
-sudo killall -w -9 ceph-mon ceph-osd
+sudo killall -w -9 ceph-mon ceph-osd ceph-mds
 if [ "$ENABLE_CEPH_RGW" = "True" ]; then
     sudo killall -w -9 radosgw
 fi
