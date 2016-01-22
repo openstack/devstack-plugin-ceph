@@ -78,8 +78,8 @@ if [[ "$1" == "unstack" ]]; then
     if [ "$REMOTE_CEPH" = "True" ]; then
         cleanup_ceph_remote
     else
-        cleanup_ceph_embedded
         stop_ceph
+        cleanup_ceph_embedded
     fi
     cleanup_ceph_general
 fi
