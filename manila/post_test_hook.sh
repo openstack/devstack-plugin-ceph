@@ -93,8 +93,10 @@ iniset $TEMPEST_CONFIG share multitenancy_enabled False
 RUN_MANILA_SNAPSHOT_TESTS=${RUN_MANILA_SNAPSHOT_TESTS:-False}
 iniset $TEMPEST_CONFIG share run_snapshot_tests $RUN_MANILA_SNAPSHOT_TESTS
 
-# Enable consistency group tests.
-RUN_MANILA_CG_TESTS=${RUN_MANILA_CG_TESTS:-True}
+# Disable consistency group tests. The lone cephfs driver, cephfs native,
+# does not yet (2nd Feb, 2016)  support,
+# 'create_consistency_group_from_snapshot' API.
+RUN_MANILA_CG_TESTS=${RUN_MANILA_CG_TESTS:-False}
 iniset $TEMPEST_CONFIG share run_consistency_group_tests $RUN_MANILA_CG_TESTS
 
 # Let us control if we die or not.
