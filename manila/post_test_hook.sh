@@ -51,6 +51,7 @@ if [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
     # Disable tempest config option that enables creation of 'ip' type access
     # rules by default during tempest test runs.
     iniset $TEMPEST_CONFIG share enable_ip_rules_for_protocols
+    iniset $TEMPEST_CONFIG share enable_cert_rules_for_protocols
     iniset $TEMPEST_CONFIG share enable_cephx_rules_for_protocols cephfs
     iniset $TEMPEST_CONFIG share capability_snapshot_support False
     iniset $TEMPEST_CONFIG share backend_names $BACKEND_NAME
