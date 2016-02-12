@@ -470,7 +470,7 @@ sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
 sudo chown ${STACK_USER}:$(id -g -n $whoami) \
 ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
 
-iniset $GLANCE_API_CONF DEFAULT show_image_direct_url True
+iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
 iniset $GLANCE_API_CONF glance_store default_store rbd
 iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
 iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
