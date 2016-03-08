@@ -107,7 +107,7 @@ function is_ceph_enabled_for_service {
     # Construct the global variable ENABLE_CEPH_.* corresponding to a
     # $service.
     config_name=ENABLE_CEPH_$(echo $service | \
-                                    tr '[:lower:]' '[:upper:]' | tr '-' '_')
+        tr '[:lower:]' '[:upper:]' | tr '-' '_')
     config=$(eval echo "\$$config_name")
 
     if (is_service_enabled $service) && [[ $config == 'True' ]]; then
@@ -116,18 +116,18 @@ function is_ceph_enabled_for_service {
     return $enabled
 }
 
-# get_ceph_version() - checks version of Ceph mon daemon or CLI based on an
+# _get_ceph_version() - checks version of Ceph mon daemon or CLI based on an
 # argument. Checking mon daemon version requires the mon daemon to be up
 # and healthy.
-function get_ceph_version {
+function _get_ceph_version {
     local ceph_version_str
 
     if [[ $1 == 'cli' ]]; then
         ceph_version_str=$(sudo ceph --version | cut -d ' ' -f 3 | \
-                            cut -d '.' -f 1,2)
+            cut -d '.' -f 1,2)
     elif [[ $1 == 'mon' ]]; then
         ceph_version_str=$(sudo ceph daemon mon.$(hostname) version | \
-                            cut -d '"' -f 4 | cut -f 1,2 -d '.')
+            cut -d '"' -f 4 | cut -f 1,2 -d '.')
     else
         die $LINENO "Invalid argument. The get_ceph_version function needs \
             an argument that can be 'cli' or 'mon'."
@@ -139,343 +139,335 @@ function get_ceph_version {
 # import_libvirt_secret_ceph() - Imports Cinder user key into libvirt
 # so it can connect to the Ceph cluster while attaching a Cinder block device
 function import_libvirt_secret_ceph {
-cat <<EOF | sudo tee secret.xml>/dev/null
-<secret ephemeral='no' private='no'>
-  <uuid>${CINDER_CEPH_UUID}</uuid>
-  <usage type='ceph'>
-    <name>client.${CINDER_CEPH_USER} secret</name>
-  </usage>
-</secret>
+    cat <<EOF | sudo tee secret.xml>/dev/null
+    <secret ephemeral='no' private='no'>
+    <uuid>${CINDER_CEPH_UUID}</uuid>
+    <usage type='ceph'>
+        <name>client.${CINDER_CEPH_USER} secret</name>
+    </usage>
+    </secret>
 EOF
-sudo virsh secret-define --file secret.xml
-sudo virsh secret-set-value --secret ${CINDER_CEPH_UUID} \
---base64 $(sudo ceph -c ${CEPH_CONF_FILE} \
-auth get-key client.${CINDER_CEPH_USER})
+    sudo virsh secret-define --file secret.xml
+    sudo virsh secret-set-value --secret ${CINDER_CEPH_UUID} \
+        --base64 $(sudo ceph -c ${CEPH_CONF_FILE} \
+        auth get-key client.${CINDER_CEPH_USER})
 
-sudo rm -f secret.xml
+    sudo rm -f secret.xml
 }
 
-# undefine_virsh_secret() - Undefine Cinder key secret from libvirt
-function undefine_virsh_secret {
-if is_ceph_enabled_for_service cinder || \
-is_ceph_enabled_for_service nova; then
-    local virsh_uuid
-    virsh_uuid=$(sudo virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }')
-    sudo virsh secret-undefine ${virsh_uuid} >/dev/null 2>&1
-fi
+# _undefine_virsh_secret() - Undefine Cinder key secret from libvirt
+function _undefine_virsh_secret {
+    if is_ceph_enabled_for_service cinder || \
+       is_ceph_enabled_for_service nova; then
+        local virsh_uuid
+        virsh_uuid=$(sudo virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }')
+        sudo virsh secret-undefine ${uuid} &>/dev/null
+    fi
 }
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-if [[ ! ${DISTRO} =~ (trusty|f21|f22) ]]; then
-    echo "WARNING: your distro $DISTRO does not provide \
-    (at least) the Firefly release. \
-    Please use Ubuntu Trusty or Fedora 20 (and higher)"
-    if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
-        die $LINENO "If you wish to install Ceph on this distribution anyway \
-        run with FORCE_CEPH_INSTALL=yes, \
-        this assumes that YOU will setup the proper repositories"
+    if [[ ! ${DISTRO} =~ (trusty|f21|f22) ]]; then
+        echo "WARNING: your distro $DISTRO does not provide \
+            (at least) the Firefly release. \
+            Please use Ubuntu Trusty or Fedora 20 (and higher)"
+        if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
+            die $LINENO "If you wish to install Ceph on this distribution \
+                anyway run with FORCE_CEPH_INSTALL=yes, \
+                this assumes that YOU will setup the proper repositories"
+        fi
+        NO_UPDATE_REPOS=False
     fi
-    NO_UPDATE_REPOS=False
-fi
 }
 
 # cleanup_ceph() - Remove residual data files, anything left over from previous
 # runs that a clean run would need to clean up
 function cleanup_ceph_remote {
-# do a proper cleanup from here to avoid leftover on the remote Ceph cluster
-if is_ceph_enabled_for_service glance; then
-    sudo ceph osd pool delete $GLANCE_CEPH_POOL $GLANCE_CEPH_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
+    # do a proper cleanup from here to avoid leftover on the remote Ceph cluster
+    if is_ceph_enabled_for_service glance; then
+        sudo ceph osd pool delete $GLANCE_CEPH_POOL $GLANCE_CEPH_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
 
-    sudo ceph auth del client.$GLANCE_CEPH_USER > /dev/null 2>&1
-fi
-if is_ceph_enabled_for_service cinder; then
-    sudo ceph osd pool delete $CINDER_CEPH_POOL $CINDER_CEPH_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
+        sudo ceph auth del client.$GLANCE_CEPH_USER > /dev/null 2>&1
+    fi
+    if is_ceph_enabled_for_service cinder; then
+        sudo ceph osd pool delete $CINDER_CEPH_POOL $CINDER_CEPH_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
 
-    sudo ceph auth del client.$CINDER_CEPH_USER > /dev/null 2>&1
-fi
-if is_ceph_enabled_for_service c-bak; then
-    sudo ceph osd pool delete $CINDER_BAK_CEPH_POOL $CINDER_BAK_CEPH_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
+        sudo ceph auth del client.$CINDER_CEPH_USER > /dev/null 2>&1
+    fi
+    if is_ceph_enabled_for_service c-bak; then
+        sudo ceph osd pool delete $CINDER_BAK_CEPH_POOL $CINDER_BAK_CEPH_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
 
-    sudo ceph auth del client.$CINDER_BAK_CEPH_USER > /dev/null 2>&1
-fi
-if is_ceph_enabled_for_service nova; then
-    iniset $NOVA_CONF libvirt rbd_secret_uuid ""
-    sudo ceph osd pool delete $NOVA_CEPH_POOL $NOVA_CEPH_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
-fi
-if is_ceph_enabled_for_service manila; then
-    sudo ceph osd pool delete $CEPHFS_METADATA_POOL $CEPHFS_METADATA_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
-    sudo ceph osd pool delete $CEPHFS_DATA_POOL $CEPHFS_DATA_POOL \
-    --yes-i-really-really-mean-it > /dev/null 2>&1
-    sudo ceph auth del client.$MANILA_CEPH_USER > /dev/null 2>&1
-fi
+        sudo ceph auth del client.$CINDER_BAK_CEPH_USER > /dev/null 2>&1
+    fi
+    if is_ceph_enabled_for_service nova; then
+        iniset $NOVA_CONF libvirt rbd_secret_uuid ""
+        sudo ceph osd pool delete $NOVA_CEPH_POOL $NOVA_CEPH_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
+    fi
+    if is_ceph_enabled_for_service manila; then
+        sudo ceph osd pool delete $CEPHFS_METADATA_POOL $CEPHFS_METADATA_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
+        sudo ceph osd pool delete $CEPHFS_DATA_POOL $CEPHFS_DATA_POOL \
+            --yes-i-really-really-mean-it > /dev/null 2>&1
+        sudo ceph auth del client.$MANILA_CEPH_USER > /dev/null 2>&1
+    fi
 }
 
 function cleanup_ceph_embedded {
-sudo killall -w -9 ceph-mon ceph-osd ceph-mds
-if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-    sudo killall -w -9 radosgw
-fi
-sudo rm -rf ${CEPH_DATA_DIR}/*/*
-if egrep -q ${CEPH_DATA_DIR} /proc/mounts; then
-    sudo umount ${CEPH_DATA_DIR}
-fi
-if [[ -e ${CEPH_DISK_IMAGE} ]]; then
-    sudo rm -f ${CEPH_DISK_IMAGE}
-fi
+    sudo killall -w -9 ceph-mon ceph-osd ceph-mds
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        sudo killall -w -9 radosgw
+    fi
+    sudo rm -rf ${CEPH_DATA_DIR}/*/*
+    if egrep -q ${CEPH_DATA_DIR} /proc/mounts; then
+        sudo umount ${CEPH_DATA_DIR}
+    fi
+    if [[ -e ${CEPH_DISK_IMAGE} ]]; then
+        sudo rm -f ${CEPH_DISK_IMAGE}
+    fi
 
-# purge ceph config file and keys
-sudo rm -rf ${CEPH_CONF_DIR}/*
+    # purge ceph config file and keys
+    sudo rm -rf ${CEPH_CONF_DIR}/*
 }
 
 function cleanup_ceph_general {
-undefine_virsh_secret
+    _undefine_virsh_secret
 }
 
 # configure_ceph() - Set config files, create data dirs, etc
 function configure_ceph {
-local count=0
+    local count=0
 
-# create a backing file disk
-create_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR} ${CEPH_LOOPBACK_DISK_SIZE}
+    # create a backing file disk
+    create_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR} ${CEPH_LOOPBACK_DISK_SIZE}
 
-# populate ceph directory
-sudo mkdir -p \
-${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
+    # populate ceph directory
+    sudo mkdir -p \
+        ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
 
-# create ceph monitor initial key and directory
-sudo ceph-authtool /var/lib/ceph/tmp/keyring.mon.$(hostname) \
---create-keyring --name=mon. --add-key=$(ceph-authtool --gen-print-key) \
---cap mon 'allow *'
+    # create ceph monitor initial key and directory
+    sudo ceph-authtool /var/lib/ceph/tmp/keyring.mon.$(hostname) \
+        --create-keyring --name=mon. --add-key=$(ceph-authtool \
+        --gen-print-key) --cap mon 'allow *'
 
-sudo mkdir /var/lib/ceph/mon/ceph-$(hostname)
+    sudo mkdir /var/lib/ceph/mon/ceph-$(hostname)
 
-# create a default ceph configuration file
-cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
-[global]
-fsid = ${CEPH_FSID}
-mon_initial_members = $(hostname)
-mon_host = ${SERVICE_HOST}
-auth_cluster_required = cephx
-auth_service_required = cephx
-auth_client_required = cephx
-filestore_xattr_use_omap = true
-osd crush chooseleaf type = 0
-osd journal size = 100
-osd pool default size = ${CEPH_REPLICAS}
+    # create a default ceph configuration file
+    cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
+    [global]
+    fsid = ${CEPH_FSID}
+    mon_initial_members = $(hostname)
+    mon_host = ${SERVICE_HOST}
+    auth_cluster_required = cephx
+    auth_service_required = cephx
+    auth_client_required = cephx
+    filestore_xattr_use_omap = true
+    osd crush chooseleaf type = 0
+    osd journal size = 100
+    osd pool default size = ${CEPH_REPLICAS}
 EOF
 
-# bootstrap the ceph monitor
-sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
---keyring /var/lib/ceph/tmp/keyring.mon.$(hostname)
+    # bootstrap the ceph monitor
+    sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
+        --keyring /var/lib/ceph/tmp/keyring.mon.$(hostname)
 
-if is_ubuntu; then
-    sudo touch /var/lib/ceph/mon/ceph-$(hostname)/upstart
-    # Do a Ceph version check. If version >= Infernalis, then make sure that
-    # the user "ceph" is the owner of files within the ${CEPH_DATA_DIR}.
-    # Check CLI version instead of mon daemon version as the mon daemon
-    # is not yet up.
-    if [[ $(echo $(get_ceph_version cli) '>=' 9.2 | bc -l) == 1 ]]; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
-    fi
-    sudo initctl emit ceph-mon id=$(hostname)
-else
-    sudo touch /var/lib/ceph/mon/ceph-$(hostname)/sysvinit
-    sudo service ceph start mon.$(hostname)
-fi
-
-# wait for the admin key to come up
-# otherwise we will not be able to do the actions below
-until [ -f ${CEPH_CONF_DIR}/ceph.client.admin.keyring ]; do
-    echo_summary "Waiting for the Ceph admin key to be ready..."
-
-    count=$(($count + 1))
-    if [ $count -eq 3 ]; then
-        die $LINENO "Maximum of 3 retries reached"
-    fi
-    sleep 5
-done
-
-# create a simple rule to take OSDs instead of host with CRUSH
-# then apply this rules to the default pool
-if [[ $CEPH_REPLICAS -ne 1 ]]; then
-    sudo ceph -c ${CEPH_CONF_FILE} \
-    osd crush rule create-simple devstack default osd
-
-    RULE_ID=$(sudo ceph -c ${CEPH_CONF_FILE} \
-    osd crush rule dump devstack | awk '/rule_id/ {print $3}' | cut -d ',' -f1)
-
-    sudo ceph -c ${CEPH_CONF_FILE} \
-    osd pool set rbd crush_ruleset ${RULE_ID}
-    sudo ceph -c ${CEPH_CONF_FILE} \
-    osd pool set data crush_ruleset ${RULE_ID}
-    sudo ceph -c ${CEPH_CONF_FILE} \
-    osd pool set metadata crush_ruleset ${RULE_ID}
-fi
-
-# create the OSD(s)
-for rep in ${CEPH_REPLICAS_SEQ}; do
-    OSD_ID=$(sudo ceph -c ${CEPH_CONF_FILE} osd create)
-    sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-    sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
-
-    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create osd.${OSD_ID} \
-    mon 'allow profile osd ' osd 'allow *' | \
-    sudo tee ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
-
-    # ceph's init script is parsing ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/
-    # and looking for a file 'upstart' or 'sysinitv'
-    # thanks to these 'touches' we are able to control OSDs daemons
-    # from the init script.
     if is_ubuntu; then
-        sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/upstart
+        sudo touch /var/lib/ceph/mon/ceph-$(hostname)/upstart
+        # Do a Ceph version check. If version >= Infernalis, then make sure that
+        # the user "ceph" is the owner of files within the ${CEPH_DATA_DIR}.
+        # Check CLI version instead of mon daemon version as the mon daemon
+        # is not yet up.
+        if [[ $(echo $(_get_ceph_version cli) '>=' 9.2 | bc -l) == 1 ]]; then
+            sudo chown -R ceph. ${CEPH_DATA_DIR}
+        fi
+        sudo initctl emit ceph-mon id=$(hostname)
     else
-        sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/sysvinit
+        sudo touch /var/lib/ceph/mon/ceph-$(hostname)/sysvinit
+        sudo service ceph start mon.$(hostname)
     fi
-done
 
-if is_ceph_enabled_for_service manila; then
-    # create a MDS
-    sudo mkdir -p ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
-    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mds.${MDS_ID} \
-        mon 'allow profile mds ' osd 'allow rw' mds 'allow' \
-        -o ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
-    if is_ubuntu; then
-        sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/upstart
-    else
-        sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/sysvinit
+    # wait for the admin key to come up
+    # otherwise we will not be able to do the actions below
+    until [ -f ${CEPH_CONF_DIR}/ceph.client.admin.keyring ]; do
+        echo_summary "Waiting for the Ceph admin key to be ready..."
+
+        count=$(($count + 1))
+        if [ $count -eq 3 ]; then
+            die $LINENO "Maximum of 3 retries reached"
+        fi
+        sleep 5
+    done
+
+    # create a simple rule to take OSDs instead of host with CRUSH
+    # then apply this rules to the default pool
+    if [[ $CEPH_REPLICAS -ne 1 ]]; then
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            osd crush rule create-simple devstack default osd
+
+        RULE_ID=$(sudo ceph -c ${CEPH_CONF_FILE} \
+            osd crush rule dump devstack | \
+            awk '/rule_id/ {print $3}' | \
+            cut -d ',' -f1)
+
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            osd pool set rbd crush_ruleset ${RULE_ID}
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            osd pool set data crush_ruleset ${RULE_ID}
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            osd pool set metadata crush_ruleset ${RULE_ID}
     fi
-fi
 
-if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-    configure_ceph_rgw
-fi
+    # create the OSD(s)
+    for rep in ${CEPH_REPLICAS_SEQ}; do
+        OSD_ID=$(sudo ceph -c ${CEPH_CONF_FILE} osd create)
+        sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
+        sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
+
+        sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create osd.${OSD_ID} \
+            mon 'allow profile osd ' osd 'allow *' | \
+            sudo tee ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
+
+        # ceph's init script is parsing ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/
+        # and looking for a file 'upstart' or 'sysinitv'
+        # thanks to these 'touches' we are able to control OSDs daemons
+        # from the init script.
+        if is_ubuntu; then
+            sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/upstart
+        else
+            sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/sysvinit
+        fi
+    done
+
+    if is_ceph_enabled_for_service manila; then
+        # create a MDS
+        sudo mkdir -p ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
+        sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mds.${MDS_ID} \
+            mon 'allow profile mds ' osd 'allow rw' mds 'allow' \
+            -o ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
+        if is_ubuntu; then
+            sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/upstart
+        else
+            sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/sysvinit
+        fi
+    fi
+
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        _configure_ceph_rgw
+    fi
 }
 
-function configure_ceph_rgw {
-# bootstrap rados gateway
-sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
-sudo ceph auth get-or-create client.radosgw.$(hostname) \
-osd 'allow rwx' mon 'allow rw' \
--o ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
+function _configure_ceph_rgw {
+    # bootstrap rados gateway
+    sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+    sudo ceph auth get-or-create client.radosgw.$(hostname) \
+        osd 'allow rwx' mon 'allow rw' \
+        -o ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
 
-if is_ubuntu; then
-    sudo touch \
-    ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{upstart,done}
-else
-    sudo touch \
-    ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{sysvinit,done}
-fi
+    if is_ubuntu; then
+        sudo touch \
+            ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{upstart,done}
+    else
+        sudo touch \
+            ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{sysvinit,done}
+    fi
 
-# Do a Ceph version check. If version >= Infernalis, then make sure that user
-# "ceph" is the owner of files within ${CEPH_DATA_DIR}.
-if [[ $(echo $(get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
-    sudo chown -R ceph. ${CEPH_DATA_DIR}
-fi
+    # Do a Ceph version check. If version >= Infernalis, then make sure that user
+    # "ceph" is the owner of files within ${CEPH_DATA_DIR}.
+    if [[ $(echo $(_get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
+        sudo chown -R ceph. ${CEPH_DATA_DIR}
+    fi
 
-if [[ ! "$(egrep "\[client.radosgw\]" ${CEPH_CONF_FILE})" ]]; then
-    cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-[client.radosgw.$(hostname)]
-host = $(hostname)
-keyring = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
-rgw socket path = /tmp/radosgw-$(hostname).sock
-log file = /var/log/ceph/radosgw-$(hostname).log
-rgw data = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
-rgw print continue = false
-rgw frontends = civetweb port=${CEPH_RGW_PORT}
-rgw keystone url = http://${SERVICE_HOST}:35357
-rgw keystone admin token = ${SERVICE_TOKEN}
-rgw keystone accepted roles = Member, _member_, admin
-rgw s3 auth use keystone = true
-nss db path = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+    if [[ ! "$(egrep "\[client.radosgw\]" ${CEPH_CONF_FILE})" ]]; then
+        cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+        [client.radosgw.$(hostname)]
+        host = $(hostname)
+        keyring = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
+        rgw socket path = /tmp/radosgw-$(hostname).sock
+        log file = /var/log/ceph/radosgw-$(hostname).log
+        rgw data = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+        rgw print continue = false
+        rgw frontends = civetweb port=${CEPH_RGW_PORT}
+        rgw keystone url = http://${SERVICE_HOST}:35357
+        rgw keystone admin token = ${SERVICE_TOKEN}
+        rgw keystone accepted roles = Member, _member_, admin
+        rgw s3 auth use keystone = true
+        nss db path = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
 EOF
-fi
+    fi
+}
+
+function _create_swift_endpoint {
+
+    local swift_service
+    swift_service=\
+        $(get_or_create_service "swift" "object-store" "Swift Service")
+
+    local swift_endpoint
+    swift_endpoint=\
+        "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
+
+    get_or_create_endpoint $swift_service \
+        "$REGION_NAME" $swift_endpoint $swift_endpoint $swift_endpoint
 }
 
 function configure_ceph_embedded_rgw {
-# keystone endpoint for radosgw
-if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-    local swift_service
-    swift_service=$(get_or_create_service "swift" \
-    "object-store" "Swift Service")
+    # keystone endpoint for radosgw
+    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        _create_swift_endpoint
+    fi
 
-    get_or_create_endpoint $swift_service \
-    "$REGION_NAME" \
-    "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1" \
-    "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1" \
-    "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
-fi
+    # Let keystone generate the certs, rgw needs these.
+    keystone-manage pki_setup --rebuild
 
-# Let keystone generate the certs, rgw needs these.
-keystone-manage pki_setup --rebuild
+    # radosgw needs to access keystone's revocation list
+    sudo mkdir ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+    sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
+        sudo certutil \
+        -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
+        -A -n ca -t "TCu,Cu,Tuw"
 
-# radosgw needs to access keystone's revocation list
-sudo mkdir ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
-sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
-sudo certutil \
--d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
--A -n ca -t "TCu,Cu,Tuw"
+    sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
+        sudo certutil -A \
+        -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
+        -n signing_cert -t "P,P,P"
 
-sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
-sudo certutil -A \
--d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
--n signing_cert -t "P,P,P"
-
-# radosgw service is started here as it needs the keystone pki_setup as a
-# pre-requisite
-sudo start radosgw id=radosgw.$(hostname)
-}
-
-function configure_ceph_remote_rgw {
-if [[ -z "$CEPH_REMOTE_RGW_URL" ]]; then
-    die $LINENO \
-    "You activated REMOTE_CEPH_RGW thus CEPH_REMOTE_RGW_URL must be defined"
-else
-    local swift_service
-    swift_service=$(get_or_create_service "swift" \
-    "object-store" "Swift Service")
-    get_or_create_endpoint $swift_service \
-    "$REGION_NAME" \
-    "$SWIFT_SERVICE_PROTOCOL://$CEPH_REMOTE_RGW_URL:${CEPH_RGW_PORT}/swift/v1"\
-    "$SWIFT_SERVICE_PROTOCOL://$CEPH_REMOTE_RGW_URL:${CEPH_RGW_PORT}/swift/v1"\
-    "$SWIFT_SERVICE_PROTOCOL://$CEPH_REMOTE_RGW_URL:${CEPH_RGW_PORT}/swift/v1"
-fi
+    # radosgw service is started here as it needs the keystone pki_setup as a
+    # pre-requisite
+    sudo start radosgw id=radosgw.$(hostname)
 }
 
 function configure_ceph_embedded_glance {
-# configure Glance service options, ceph pool, ceph user and ceph key
-if [[ $CEPH_REPLICAS -ne 1 ]]; then
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-    set ${GLANCE_CEPH_POOL} crush_ruleset ${RULE_ID}
-fi
+    # configure Glance service options, ceph pool, ceph user and ceph key
+    if [[ $CEPH_REPLICAS -ne 1 ]]; then
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+            set ${GLANCE_CEPH_POOL} crush_ruleset ${RULE_ID}
+    fi
 }
 
 # configure_ceph_glance() - Glance config needs to come after Glance is set up
 function configure_ceph_glance {
-sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
-${GLANCE_CEPH_POOL} ${GLANCE_CEPH_POOL_PG} ${GLANCE_CEPH_POOL_PGP}
+    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+        ${GLANCE_CEPH_POOL} ${GLANCE_CEPH_POOL_PG} ${GLANCE_CEPH_POOL_PGP}
 
-sudo ceph -c ${CEPH_CONF_FILE} auth \
-get-or-create client.${GLANCE_CEPH_USER} \
-mon "allow r" \
-osd "allow class-read object_prefix rbd_children, \
-allow rwx pool=${GLANCE_CEPH_POOL}" | \
-sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+    sudo ceph -c ${CEPH_CONF_FILE} auth \
+        get-or-create client.${GLANCE_CEPH_USER} \
+        mon "allow r" \
+        osd "allow class-read object_prefix rbd_children, \
+        allow rwx pool=${GLANCE_CEPH_POOL}" | \
+        sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
 
-sudo chown ${STACK_USER}:$(id -g -n $whoami) \
-${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+    sudo chown ${STACK_USER}:$(id -g -n $whoami) \
+        ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
 
-iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
-iniset $GLANCE_API_CONF glance_store default_store rbd
-iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
-iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
-iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
-iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
+    iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
+    iniset $GLANCE_API_CONF glance_store default_store rbd
+    iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
+    iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
+    iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
+    iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
 }
 
 function configure_ceph_manila {
@@ -506,174 +498,172 @@ function configure_ceph_embedded_manila {
 }
 
 function configure_ceph_embedded_nova {
-# configure Nova service options, ceph pool, ceph user and ceph key
+    # configure Nova service options, ceph pool, ceph user and ceph key
 
-if [[ $CEPH_REPLICAS -ne 1 ]]; then
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-    set ${NOVA_CEPH_POOL} crush_ruleset ${RULE_ID}
-fi
+    if [[ $CEPH_REPLICAS -ne 1 ]]; then
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+            set ${NOVA_CEPH_POOL} crush_ruleset ${RULE_ID}
+    fi
 }
 
 # configure_ceph_nova() - Nova config needs to come after Nova is set up
 function configure_ceph_nova {
-sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
-${NOVA_CEPH_POOL} ${NOVA_CEPH_POOL_PG} ${NOVA_CEPH_POOL_PGP}
+    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+        ${NOVA_CEPH_POOL} ${NOVA_CEPH_POOL_PG} ${NOVA_CEPH_POOL_PGP}
 
-iniset $NOVA_CONF libvirt rbd_user ${CINDER_CEPH_USER}
-iniset $NOVA_CONF libvirt rbd_secret_uuid ${CINDER_CEPH_UUID}
-iniset $NOVA_CONF libvirt inject_key false
-iniset $NOVA_CONF libvirt inject_partition -2
-iniset $NOVA_CONF libvirt disk_cachemodes "network=writeback"
-iniset $NOVA_CONF libvirt images_type rbd
-iniset $NOVA_CONF libvirt images_rbd_pool ${NOVA_CEPH_POOL}
-iniset $NOVA_CONF libvirt images_rbd_ceph_conf ${CEPH_CONF_FILE}
+    iniset $NOVA_CONF libvirt rbd_user ${CINDER_CEPH_USER}
+    iniset $NOVA_CONF libvirt rbd_secret_uuid ${CINDER_CEPH_UUID}
+    iniset $NOVA_CONF libvirt inject_key false
+    iniset $NOVA_CONF libvirt inject_partition -2
+    iniset $NOVA_CONF libvirt disk_cachemodes "network=writeback"
+    iniset $NOVA_CONF libvirt images_type rbd
+    iniset $NOVA_CONF libvirt images_rbd_pool ${NOVA_CEPH_POOL}
+    iniset $NOVA_CONF libvirt images_rbd_ceph_conf ${CEPH_CONF_FILE}
 
-if ! is_ceph_enabled_for_service cinder; then
-    sudo ceph -c ${CEPH_CONF_FILE} \
-    auth get-or-create client.${CINDER_CEPH_USER} \
-    mon "allow r" \
-    osd "allow class-read object_prefix rbd_children, \
-    allow rwx pool=${CINDER_CEPH_POOL}, allow rwx pool=${NOVA_CEPH_POOL}, \
-    allow rwx pool=${GLANCE_CEPH_POOL}" | \
-    sudo tee ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring \
-    > /dev/null
+    if ! is_ceph_enabled_for_service cinder; then
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            auth get-or-create client.${CINDER_CEPH_USER} \
+            mon "allow r" \
+            osd "allow class-read object_prefix rbd_children, \
+            allow rwx pool=${CINDER_CEPH_POOL}, \
+            allow rwx pool=${NOVA_CEPH_POOL}, \
+            allow rwx pool=${GLANCE_CEPH_POOL}" | \
+            sudo tee \
+            ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring \
+            > /dev/null
 
-    sudo chown ${STACK_USER}:$(id -g -n $whoami) \
-    ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
+        sudo chown ${STACK_USER}:$(id -g -n $whoami) \
+            ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
     fi
 }
 
 function configure_ceph_embedded_cinder {
-# Configure Cinder service options, ceph pool, ceph user and ceph key
+    # Configure Cinder service options, ceph pool, ceph user and ceph key
 
-if [[ $CEPH_REPLICAS -ne 1 ]]; then
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool \
-    set ${CINDER_CEPH_POOL} crush_ruleset ${RULE_ID}
-fi
+    if [[ $CEPH_REPLICAS -ne 1 ]]; then
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+            set ${CINDER_CEPH_POOL} crush_ruleset ${RULE_ID}
+    fi
 }
 
 # configure_ceph_cinder() - Cinder config needs to come after Cinder is set up
 function configure_ceph_cinder {
-sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
-${CINDER_CEPH_POOL} ${CINDER_CEPH_POOL_PG} ${CINDER_CEPH_POOL_PGP}
+    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+        ${CINDER_CEPH_POOL} ${CINDER_CEPH_POOL_PG} ${CINDER_CEPH_POOL_PGP}
 
-sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create \
-client.${CINDER_CEPH_USER} \
-mon "allow r" \
-osd "allow class-read object_prefix rbd_children, \
-allow rwx pool=${CINDER_CEPH_POOL}, allow rwx pool=${NOVA_CEPH_POOL}, \
-allow rwx pool=${GLANCE_CEPH_POOL}" | \
-sudo tee ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
+    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create \
+        client.${CINDER_CEPH_USER} \
+        mon "allow r" \
+        osd "allow class-read object_prefix rbd_children, \
+        allow rwx pool=${CINDER_CEPH_POOL}, allow rwx pool=${NOVA_CEPH_POOL}, \
+        allow rwx pool=${GLANCE_CEPH_POOL}" | \
+        sudo tee ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
 
-sudo chown ${STACK_USER}:$(id -g -n $whoami) \
-${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
+    sudo chown ${STACK_USER}:$(id -g -n $whoami) \
+        ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
 }
 
 # init_ceph() - Initialize databases, etc.
 function init_ceph {
-# clean up from previous (possibly aborted) runs
-# make sure to kill all ceph processes first
-sudo pkill -f ceph-mon || true
-sudo pkill -f ceph-osd || true
-if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-    sudo pkill -f radosgw || true
-fi
-if is_ceph_enabled_for_service manila; then
-    sudo pkill -f ceph-mds || true
-fi
+    # clean up from previous (possibly aborted) runs
+    # make sure to kill all ceph processes first
+    sudo pkill -f ceph-mon || true
+    sudo pkill -f ceph-osd || true
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        sudo pkill -f radosgw || true
+    fi
+    if is_ceph_enabled_for_service manila; then
+        sudo pkill -f ceph-mds || true
+    fi
 }
 
 # install_ceph() - Collect source and prepare
 function install_ceph_remote {
-install_package ceph-common
+    install_package ceph-common
 }
 
 function install_ceph {
-if is_ubuntu; then
-    # TODO (rraja): use wip-manila development repo until Ceph patches needed
-    # by Manila's Ceph driver are available in a release package.
-    CEPH_PACKAGES="ceph libnss3-tools"
-    if is_ceph_enabled_for_service manila; then
-        wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
-        | sudo apt-key add -
+    if is_ubuntu; then
+        # TODO (rraja): use wip-manila development repo until Ceph patches needed
+        # by Manila's Ceph driver are available in a release package.
+        CEPH_PACKAGES="ceph libnss3-tools"
+        if is_ceph_enabled_for_service manila; then
+            wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
+                | sudo apt-key add -
 
-        echo deb \
-        http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/wip-manila \
-        $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/ceph.list
+            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/wip-manila $(lsb_release -sc) main" | \
+                sudo tee /etc/apt/sources.list.d/ceph.list
 
-        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
+            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
+        else
+            wget -q -O- 'https://download.ceph.com/keys/release.asc' \
+                | sudo apt-key add -
+
+            echo "deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main" | \
+                sudo tee /etc/apt/sources.list.d/ceph.list
+        fi
+
+        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+            CEPH_PACKAGES="${CEPH_PACKAGES} radosgw"
+        fi
+
+        # Update package repo.
+        REPOS_UPDATED=False
+        install_package ${CEPH_PACKAGES}
     else
-        wget -q -O- 'https://download.ceph.com/keys/release.asc' \
-        | sudo apt-key add -
+        # Install directly from distro repos. See LP bug 1521073 for more details.
+        # If distro doesn't carry latest ceph, users can install latest ceph repo
+        # for their distro (if available) from download.ceph.com and then do
+        # stack.sh
+        CEPH_PACKAGES="ceph"
+        if is_ceph_enabled_for_service manila; then
+            CEPH_PACKAGES="${CEPH_PACKAGES} libcephfs1"
+        fi
 
-        echo deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) \
-        main | sudo tee /etc/apt/sources.list.d/ceph.list
+        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+            install_package ceph-radosgw
+            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-radosgw"
+        fi
+
+        install_package ${CEPH_PACKAGES}
     fi
-
-    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-        CEPH_PACKAGES="${CEPH_PACKAGES} radosgw"
-    fi
-
-    # Update package repo.
-    REPOS_UPDATED=False
-    install_package ${CEPH_PACKAGES}
-
-
-else
-    # Install directly from distro repos. See LP bug 1521073 for more details.
-    # If distro doesn't carry latest ceph, users can install latest ceph repo
-    # for their distro (if available) from download.ceph.com and then do
-    # stack.sh
-    CEPH_PACKAGES="ceph"
-    if is_ceph_enabled_for_service manila; then
-        CEPH_PACKAGES="${CEPH_PACKAGES} libcephfs1"
-    fi
-
-    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-        install_package ceph-radosgw
-        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-radosgw"
-    fi
-
-    install_package ${CEPH_PACKAGES}
-fi
 }
 
 # start_ceph() - Start running processes, including screen
 function start_ceph {
-if is_ubuntu; then
-    # Do a Ceph version check. If version >= Infernalis, then make sure that
-    # the user "ceph" is the owner of files within ${CEPH_DATA_DIR}.
-    if [[ $(echo $(get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
+    if is_ubuntu; then
+        # Do a Ceph version check. If version >= Infernalis, then make sure that
+        # the user "ceph" is the owner of files within ${CEPH_DATA_DIR}.
+        if [[ $(echo $(_get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
+            sudo chown -R ceph. ${CEPH_DATA_DIR}
+        fi
+        sudo initctl emit ceph-mon id=$(hostname)
+        for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
+            sudo start ceph-osd id=${id}
+        done
+        if is_ceph_enabled_for_service manila; then
+            sudo start ceph-mds id=${MDS_ID}
+        fi
+    else
+        sudo service ceph start
     fi
-    sudo initctl emit ceph-mon id=$(hostname)
-    for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
-        sudo start ceph-osd id=${id}
-    done
-    if is_ceph_enabled_for_service manila; then
-        sudo start ceph-mds id=${MDS_ID}
-    fi
-else
-    sudo service ceph start
-fi
 }
 
 # stop_ceph() - Stop running processes (non-screen)
 function stop_ceph {
-if is_ubuntu; then
-    sudo stop ceph-mon-all > /dev/null 2>&1
-    sudo stop ceph-osd-all > /dev/null 2>&1
-    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-        sudo stop radosgw-all > /dev/null 2>&1
+    if is_ubuntu; then
+        sudo stop ceph-mon-all > /dev/null 2>&1
+        sudo stop ceph-osd-all > /dev/null 2>&1
+        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+            sudo stop radosgw-all > /dev/null 2>&1
+        fi
+        if is_ceph_enabled_for_service manila; then
+            sudo service ceph-mds-all stop > /dev/null 2>&1
+        fi
+    else
+        sudo service ceph stop > /dev/null 2>&1
     fi
-    if is_ceph_enabled_for_service manila; then
-        sudo service ceph-mds-all stop > /dev/null 2>&1
-    fi
-else
-    sudo service ceph stop > /dev/null 2>&1
-fi
 }
-
 
 # Restore xtrace
 $XTRACE
