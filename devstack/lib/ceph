@@ -31,7 +31,7 @@ CEPH_RELEASE=${CEPH_RELEASE:-hammer}
 # Set ``CEPH_DATA_DIR`` to the location of Ceph drives and objects.
 # Default is the common DevStack data directory.
 CEPH_DATA_DIR=${CEPH_DATA_DIR:-/var/lib/ceph}
-CEPH_DISK_IMAGE=${CEPH_DATA_DIR}/drives/images/ceph.img
+CEPH_DISK_IMAGE=${CEPH_DISK_IMAGE:-${CEPH_DATA_DIR}/drives/images/ceph.img}
 
 # Set ``CEPH_CONF_DIR`` to the location of the configuration files.
 # Default is ``/etc/ceph``.
