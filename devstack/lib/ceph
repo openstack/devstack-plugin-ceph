@@ -95,6 +95,12 @@ REMOTE_CEPH_RGW=$(trueorfalse False REMOTE_CEPH_RGW)
 # bug 1463525.
 ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
 
+# The gate will configure a package mirror for ceph packages
+APT_REPOSITORY_FILE="/etc/apt/sources.list.d/ceph-deb-hammer.list"
+# If the package mirror file doesn't exist, fetch from here
+APT_REPOSITORY_ENTRY="\
+    deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
+
 # Functions
 # ------------
 
@@ -594,6 +600,8 @@ function install_ceph_remote {
 function install_ceph {
     if is_ubuntu; then
         CEPH_PACKAGES="ceph libnss3-tools"
+        install_package software-properties-common
+
         if is_ceph_enabled_for_service manila; then
             wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
                 | sudo apt-key add -
@@ -602,12 +610,17 @@ function install_ceph {
                 sudo tee /etc/apt/sources.list.d/ceph.list
 
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
-        else
-            wget -q -O- 'https://download.ceph.com/keys/release.asc' \
-                | sudo apt-key add -
 
-            echo "deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main" | \
-                sudo tee /etc/apt/sources.list.d/ceph.list
+        elif [ ! -f "$APT_REPOSITORY_FILE" ]; then
+
+            # the gate requires that we use mirrored package repositories for
+            # reliability, so the most recent ceph packages are mirrored and
+            # configured in $APT_REPOSITORY_FILE.  The gate environment will
+            # ensure that this file is present, so if it doesn't exist we're
+            # likely not running in a gate environment and are free to fetch
+            # packages from ceph.com.
+
+            sudo apt-add-repository "$APT_REPOSITORY_ENTRY"
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
