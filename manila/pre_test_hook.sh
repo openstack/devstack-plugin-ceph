@@ -49,6 +49,11 @@ echo "API_RATE_LIMIT=False" >> $localrc_path
 echo "TEMPEST_SERVICES+=,manila" >> $localrc_path
 echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localrc_path
 
+
+# NOTE(rraja): Enable when need arises, for example, when the CI does scenario
+# testing.
+echo "MANILA_SERVICE_IMAGE_ENABLED=False" >> $localrc_path
+
 # Enable isolated metadata in Neutron because Tempest creates isolated
 # networks and created VMs in scenario tests don't have access to Nova Metadata
 # service. This leads to unavailability of created VMs in scenario tests.
