@@ -486,6 +486,15 @@ function configure_ceph_manila {
     # Enable snapshots in CephFS.
     sudo ceph -c ${CEPH_CONF_FILE} mds set allow_new_snaps true \
         --yes-i-really-mean-it
+
+    # Make manila's libcephfs client a root user.
+    cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+
+    [client.${MANILA_CEPH_USER}]
+    client mount uid = 0
+    client mount gid = 0
+EOF
+
 }
 
 function configure_ceph_embedded_manila {
@@ -584,14 +593,12 @@ function install_ceph_remote {
 
 function install_ceph {
     if is_ubuntu; then
-        # TODO (rraja): use wip-manila development repo until Ceph patches needed
-        # by Manila's Ceph driver are available in a release package.
         CEPH_PACKAGES="ceph libnss3-tools"
         if is_ceph_enabled_for_service manila; then
             wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
                 | sudo apt-key add -
 
-            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/wip-manila $(lsb_release -sc) main" | \
+            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/jewel $(lsb_release -sc) main" | \
                 sudo tee /etc/apt/sources.list.d/ceph.list
 
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
