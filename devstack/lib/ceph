@@ -621,6 +621,10 @@ function install_ceph {
             # packages from ceph.com.
 
             sudo apt-add-repository "$APT_REPOSITORY_ENTRY"
+
+            # install the release key for ceph.com package authentication
+            wget -q -O- 'https://download.ceph.com/keys/release.asc' \
+                | sudo apt-key add -
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
