@@ -315,7 +315,7 @@ EOF
 
         RULE_ID=$(sudo ceph -c ${CEPH_CONF_FILE} \
             osd crush rule dump devstack | \
-            awk '/rule_id/ {print $3}' | \
+            awk '/rule_id/ {print $2}' | \
             cut -d ',' -f1)
 
         sudo ceph -c ${CEPH_CONF_FILE} \
