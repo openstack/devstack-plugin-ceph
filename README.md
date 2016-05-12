@@ -22,32 +22,37 @@ As part of ```unstack.sh``` | ```clean.sh```:
 This plugin also gets used to configure Ceph as the storage backend for the upstream Ceph CI job named ```gate-tempest-dsvm-full-devstack-plugin-ceph```
 
 
-# How to use
+# Usage
 
-* Enable the plugin in ```localrc```:
+* To get started quickly, just enable the plugin in your ```local.conf```:
 
     ```enable_plugin devstack-plugin-ceph git://git.openstack.org/openstack/devstack-plugin-ceph```
 
+  Run ```stack.sh``` in your devstack tree and boom!  You're good to go.
+
 * Ceph is setup as the default storage backend for Cinder, Cinder Backup,
-  Glance and Nova services. To disable Ceph disable as the storage backend
-  for a service use the following setting in the ```localrc``` file,
+  Glance and Nova services.  You have the ability to control each of the
+  enabled services with the following configuration in your ```local.conf```:
 
     ```
-    ENABLE_CEPH_$SERVICE=False
+    ENABLE_CEPH_CINDER=True     # ceph backend for cinder
+    ENABLE_CEPH_GLANCE=True     # store images in ceph
+    ENABLE_CEPH_C_BAK=True      # backup volumes to ceph
+    ENABLE_CEPH_NOVA=True       # allow nova to use ceph resources
     ```
 
-  where $SERVICE can be CINDER, C_BAK, GLANCE or NOVA corresponding to
-  Cinder, Cinder Backup, Glance, and Nova services respectively.
+  Change any of the above lines to ```False``` to disable that feature
+  specifically.
 
 * Ceph can be enabled as the storage backend for Manila with the following
-  setting  in the ```localrc``` file,
+  setting in your ```local.conf```:
 
     ```
     ENABLE_CEPH_MANILA=True
     ```
 
   Make sure that the manila plugin is enabled before devstack-plugin-ceph in
-  the ```localrc``` file.
+  the ```local.conf``` file.
 
 * Then run ```stack.sh``` and wait for the _magic_ to happen :)
 
@@ -70,4 +75,3 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 # Bugs
 
 * https://bugs.launchpad.net/devstack-plugin-ceph
-
