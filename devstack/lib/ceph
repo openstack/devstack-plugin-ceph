@@ -255,11 +255,11 @@ function configure_ceph {
         ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
 
     # create ceph monitor initial key and directory
-    sudo ceph-authtool /var/lib/ceph/tmp/keyring.mon.$(hostname) \
+    sudo ceph-authtool ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname) \
         --create-keyring --name=mon. --add-key=$(ceph-authtool \
         --gen-print-key) --cap mon 'allow *'
 
-    sudo mkdir -p /var/lib/ceph/mon/ceph-$(hostname)
+    sudo mkdir -p ${CEPH_DATA_DIR}/mon/ceph-$(hostname)
 
     # create a default ceph configuration file
     cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
@@ -278,10 +278,10 @@ EOF
 
     # bootstrap the ceph monitor
     sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
-        --keyring /var/lib/ceph/tmp/keyring.mon.$(hostname)
+        --keyring ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname)
 
     if is_ubuntu; then
-        sudo touch /var/lib/ceph/mon/ceph-$(hostname)/upstart
+        sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/upstart
         # Do a Ceph version check. If version >= Infernalis, then make sure that
         # the user "ceph" is the owner of files within the ${CEPH_DATA_DIR}.
         # Check CLI version instead of mon daemon version as the mon daemon
@@ -291,7 +291,7 @@ EOF
         fi
         sudo initctl emit ceph-mon id=$(hostname)
     else
-        sudo touch /var/lib/ceph/mon/ceph-$(hostname)/sysvinit
+        sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/sysvinit
         sudo service ceph start mon.$(hostname)
     fi
 
