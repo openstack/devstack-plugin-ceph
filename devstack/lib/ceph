@@ -167,7 +167,7 @@ function _undefine_virsh_secret {
        is_ceph_enabled_for_service nova; then
         local virsh_uuid
         virsh_uuid=$(sudo virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }')
-        sudo virsh secret-undefine ${uuid} &>/dev/null
+        sudo virsh secret-undefine ${virsh_uuid} &>/dev/null
     fi
 }
 
