@@ -69,8 +69,17 @@ CINDER_CEPH_UUID=${CINDER_CEPH_UUID:-$(uuidgen)}
 
 # Manila
 CEPHFS_POOL_PG=${CEPHFS_POOL_PG:-8}
+
+# Multiple filesystems enable more than one devstack to share
+# the same REMOTE_CEPH cluster.  Note that in addition to setting
+# CEPHFS_MULTIPLE_FILESYSTEMS and REMOTE_CEPH, each devstack
+# needs to set distinct values for CEPHFS_FILESYSTEM,
+# CEPHFS_METADATA_POOL, and CEPHFS_DATA_POOL.
+CEPHFS_MULTIPLE_FILESYSTEMS=${CEPHFS_MULTIPLE_FILESYSTEMS:-False}
+CEPHFS_FILESYSTEM=${CEPHFS_FILESYSTEM:-cephfs}
 CEPHFS_METADATA_POOL=${CEPHFS_METADATA_POOL:-cephfs_metadata}
 CEPHFS_DATA_POOL=${CEPHFS_DATA_POOL:-cephfs_data}
+
 MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
 MDS_ID=${MDS_ID:-a}
@@ -214,6 +223,8 @@ function cleanup_ceph_remote {
             --yes-i-really-really-mean-it > /dev/null 2>&1
     fi
     if is_ceph_enabled_for_service manila; then
+        sudo ceph -c ${CEPH_CONF_FILE} fs rm $CEPHFS_FILESYSTEM \
+            --yes-i-really-mean-it
         sudo ceph osd pool delete $CEPHFS_METADATA_POOL $CEPHFS_METADATA_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
         sudo ceph osd pool delete $CEPHFS_DATA_POOL $CEPHFS_DATA_POOL \
@@ -481,7 +492,11 @@ function configure_ceph_manila {
         ${CEPHFS_POOL_PG}
     sudo ceph -c ${CEPH_CONF_FILE} osd pool create ${CEPHFS_DATA_POOL} \
         ${CEPHFS_POOL_PG}
-    sudo ceph -c ${CEPH_CONF_FILE} fs new cephfs ${CEPHFS_METADATA_POOL} \
+    if [[ ${CEPHFS_MULTIPLE_FILESYSTEMS} == 'True' ]]; then
+        sudo ceph -c ${CEPH_CONF_FILE} fs flag set enable_multiple true \
+            --yes-i-really-mean-it
+    fi
+    sudo ceph -c ${CEPH_CONF_FILE} fs new ${CEPHFS_FILESYSTEM} ${CEPHFS_METADATA_POOL} \
         ${CEPHFS_DATA_POOL}
     sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create \
         client.${MANILA_CEPH_USER} \
