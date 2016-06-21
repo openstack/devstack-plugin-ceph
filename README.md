@@ -68,9 +68,6 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 # TODOs
 
 * Fix Rados Gateway with Keystone for Swift on Fedora
-* Add support for Ceph Infernalis release
-* Add support for distro specific ceph repos
-* Add Manila support for non-Ubuntu systems
 
 # Bugs
 

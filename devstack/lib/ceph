@@ -110,6 +110,19 @@ APT_REPOSITORY_FILE="/etc/apt/sources.list.d/ceph-deb-hammer.list"
 APT_REPOSITORY_ENTRY="\
     deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
 
+# Set INIT_SYSTEM to upstart, systemd, or init.  In our domain it should be
+# safe to assume that if the init system is not upstart or systemd that it
+# is sysvinit rather than other theoretical possibilities like busybox.
+INIT_SYSTEM=$(init --version 2>/dev/null | grep -qs upstart && echo upstart \
+    || cat /proc/1/comm)
+
+# Set RUN_AS to 'root' or 'ceph'.  Starting with Infernalis, ceph daemons
+# run as the ceph user rather than as the root user.  We set this variable
+# properly later, after ceph-common package is installed.
+#
+RUN_AS='unknown'
+
+
 # Functions
 # ------------
 
@@ -151,6 +164,20 @@ function _get_ceph_version {
     echo $ceph_version_str
 }
 
+# _run_as_ceph_or_root() - Starting with Infernalis, ceph daemons run as the ceph user
+# rather than as root.  Check the version and return 'root' or 'ceph'.
+#
+# This function presupposes that ceph-common package has been installed first.
+function _run_as_ceph_or_root {
+    local ceph_version
+    ceph_version=$(_get_ceph_version cli)
+    if [[ $(echo $ceph_version '>=' 9.2 | bc -l) == 1 ]] ; then
+        echo ceph
+    else
+        echo root
+    fi
+}
+
 # import_libvirt_secret_ceph() - Imports Cinder user key into libvirt
 # so it can connect to the Ceph cluster while attaching a Cinder block device
 function import_libvirt_secret_ceph {
@@ -182,7 +209,7 @@ function _undefine_virsh_secret {
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-    if [[ ! ${DISTRO} =~ (trusty|f22|f23) ]]; then
+    if [[ ! ${DISTRO} =~ (trusty|xenial|f22|f23|f24) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Firefly release. \
             Please use Ubuntu Trusty or Fedora 20 (and higher)"
@@ -258,6 +285,10 @@ function cleanup_ceph_general {
 function configure_ceph {
     local count=0
 
+
+    RUN_AS=$(_run_as_ceph_or_root)
+    echo "ceph daemons will run as $RUN_AS"
+
     # create a backing file disk
     create_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR} ${CEPH_LOOPBACK_DISK_SIZE}
 
@@ -289,18 +320,18 @@ EOF
 
     # bootstrap the ceph monitor
     sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
-        --keyring ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname)
+         --keyring ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname)
 
-    if is_ubuntu; then
+    if [[ $RUN_AS == 'ceph' ]] ; then
+        sudo chown -R ceph. ${CEPH_DATA_DIR}
+    fi
+
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
         sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/upstart
-        # Do a Ceph version check. If version >= Infernalis, then make sure that
-        # the user "ceph" is the owner of files within the ${CEPH_DATA_DIR}.
-        # Check CLI version instead of mon daemon version as the mon daemon
-        # is not yet up.
-        if [[ $(echo $(_get_ceph_version cli) '>=' 9.2 | bc -l) == 1 ]]; then
-            sudo chown -R ceph. ${CEPH_DATA_DIR}
-        fi
         sudo initctl emit ceph-mon id=$(hostname)
+    elif [[ $INIT_SYSTEM == 'systemd' ]]; then
+        sudo systemctl enable ceph-mon@$(hostname)
+        sudo systemctl start ceph-mon@$(hostname)
     else
         sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/sysvinit
         sudo service ceph start mon.$(hostname)
@@ -340,19 +371,28 @@ EOF
     # create the OSD(s)
     for rep in ${CEPH_REPLICAS_SEQ}; do
         OSD_ID=$(sudo ceph -c ${CEPH_CONF_FILE} osd create)
-        sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-        sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
-
+        if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
+            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
+            sudo ceph-osd -c ${CEPH_CONF_FILE} --setuser ceph --setgroup ceph -i ${OSD_ID} --mkfs
+        else
+            sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
+            sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
+        fi
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create osd.${OSD_ID} \
             mon 'allow profile osd ' osd 'allow *' | \
             sudo tee ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
-
+        if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
+        fi
         # ceph's init script is parsing ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/
         # and looking for a file 'upstart' or 'sysinitv'
         # thanks to these 'touches' we are able to control OSDs daemons
         # from the init script.
-        if is_ubuntu; then
+        if [[ $INIT_SYSTEM == 'upstart' ]] ; then
             sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/upstart
+        elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+            sudo systemctl enable ceph-osd@${OSD_ID}
         else
             sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/sysvinit
         fi
@@ -361,11 +401,19 @@ EOF
     if is_ceph_enabled_for_service manila; then
         # create a MDS
         sudo mkdir -p ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
+        if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo chown ceph. ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
+        fi
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mds.${MDS_ID} \
             mon 'allow profile mds ' osd 'allow rw' mds 'allow' \
             -o ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
-        if is_ubuntu; then
+        if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo chown ceph. /var/lib/ceph/mds/ceph-${MDS_ID}/keyring
+        fi
+        if [[ $INIT_SYSTEM == 'upstart' ]] ; then
             sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/upstart
+        elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+            sudo systemctl enable ceph-mds@${MDS_ID}
         else
             sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/sysvinit
         fi
@@ -378,59 +426,74 @@ EOF
 
 function _configure_ceph_rgw {
     # bootstrap rados gateway
-    sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
-    sudo ceph auth get-or-create client.radosgw.$(hostname) \
-        osd 'allow rwx' mon 'allow rw' \
-        -o ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
-
-    if is_ubuntu; then
-        sudo touch \
-            ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{upstart,done}
+    local dest key
+    if [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        dest=${CEPH_DATA_DIR}/radosgw/ceph-rgw.$(hostname)
+        key=client.rgw.$(hostname)
     else
-        sudo touch \
-            ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/{sysvinit,done}
+        dest=${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+        key=client.radosgw.$(hostname)
+    fi
+    sudo mkdir -p $dest
+    sudo ceph auth get-or-create $key \
+        osd 'allow rwx' mon 'allow rw' \
+        -o ${dest}/keyring
+
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
+        sudo touch ${dest}/{upstart,done}
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
+    else
+        sudo touch ${dest}/{sysvinit,done}
     fi
 
-    # Do a Ceph version check. If version >= Infernalis, then make sure that user
-    # "ceph" is the owner of files within ${CEPH_DATA_DIR}.
-    if [[ $(echo $(_get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
+    if [[ $RUN_AS == 'ceph' ]] ; then
         sudo chown -R ceph. ${CEPH_DATA_DIR}
     fi
 
-    if [[ ! "$(egrep "\[client.radosgw\]" ${CEPH_CONF_FILE})" ]]; then
+    if [[ ! "$(egrep "\[${key}\]" ${CEPH_CONF_FILE})" ]]; then
         cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-        [client.radosgw.$(hostname)]
+
+        [${key}]
         host = $(hostname)
-        keyring = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/keyring
+        keyring = ${dest}/keyring
         rgw socket path = /tmp/radosgw-$(hostname).sock
         log file = /var/log/ceph/radosgw-$(hostname).log
-        rgw data = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+        rgw data = ${dest}
         rgw print continue = false
         rgw frontends = civetweb port=${CEPH_RGW_PORT}
         rgw keystone url = http://${SERVICE_HOST}:35357
         rgw keystone admin token = ${SERVICE_TOKEN}
         rgw keystone accepted roles = Member, _member_, admin
         rgw s3 auth use keystone = true
-        nss db path = ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+        nss db path = ${dest}/nss
 EOF
     fi
+
 }
 
 function _create_swift_endpoint {
 
     local swift_service
-    swift_service=\
-        $(get_or_create_service "swift" "object-store" "Swift Service")
+    swift_service=$(get_or_create_service "swift" "object-store" "Swift Service")
 
     local swift_endpoint
-    swift_endpoint=\
-        "$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
+    swift_endpoint="$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
 
     get_or_create_endpoint $swift_service \
         "$REGION_NAME" $swift_endpoint $swift_endpoint $swift_endpoint
 }
 
 function configure_ceph_embedded_rgw {
+    local dest key
+    if [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        dest=${CEPH_DATA_DIR}/radosgw/ceph-rgw.$(hostname)
+        key=client.rgw.$(hostname)
+    else
+        dest=${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
+        key=client.radosgw.$(hostname)
+    fi
+
     # keystone endpoint for radosgw
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
         _create_swift_endpoint
@@ -440,20 +503,23 @@ function configure_ceph_embedded_rgw {
     keystone-manage pki_setup --rebuild
 
     # radosgw needs to access keystone's revocation list
-    sudo mkdir -p ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss
+    sudo mkdir -p ${dest}/nss
     sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
-        sudo certutil \
-        -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
-        -A -n ca -t "TCu,Cu,Tuw"
+        sudo certutil -d ${dest}/nss -A -n ca -t "TCu,Cu,Tuw"
 
     sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
-        sudo certutil -A \
-        -d ${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)/nss \
-        -n signing_cert -t "P,P,P"
+        sudo certutil -A -d ${dest}/nss -n signing_cert -t "P,P,P"
 
     # radosgw service is started here as it needs the keystone pki_setup as a
     # pre-requisite
-    sudo start radosgw id=radosgw.$(hostname)
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
+        sudo start radosgw id=radosgw.$(hostname)
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
+        sudo systemctl start ceph-radosgw@rgw.$(hostname)
+    else
+        sudo service ceph start rgw.$(hostname)
+    fi
 }
 
 function configure_ceph_embedded_glance {
@@ -650,14 +716,7 @@ function install_ceph {
         REPOS_UPDATED=False
         install_package ${CEPH_PACKAGES}
     else
-        # Install directly from distro repos. See LP bug 1521073 for more details.
-        # If distro doesn't carry latest ceph, users can install latest ceph repo
-        # for their distro (if available) from download.ceph.com and then do
-        # stack.sh
         CEPH_PACKAGES="ceph"
-        if is_ceph_enabled_for_service manila; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} libcephfs1"
-        fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
             install_package ceph-radosgw
@@ -670,18 +729,24 @@ function install_ceph {
 
 # start_ceph() - Start running processes, including screen
 function start_ceph {
-    if is_ubuntu; then
-        # Do a Ceph version check. If version >= Infernalis, then make sure that
-        # the user "ceph" is the owner of files within ${CEPH_DATA_DIR}.
-        if [[ $(echo $(_get_ceph_version mon) '>=' 9.2 | bc -l) == 1 ]]; then
-            sudo chown -R ceph. ${CEPH_DATA_DIR}
-        fi
+    if [[ $RUN_AS == 'ceph' ]] ; then
+        sudo chown -R ceph. ${CEPH_DATA_DIR}
+    fi
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
         sudo initctl emit ceph-mon id=$(hostname)
         for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
             sudo start ceph-osd id=${id}
         done
         if is_ceph_enabled_for_service manila; then
             sudo start ceph-mds id=${MDS_ID}
+        fi
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        sudo systemctl start ceph-mon@$(hostname)
+        for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
+            sudo systemctl start ceph-osd@$id
+        done
+        if is_ceph_enabled_for_service manila; then
+            sudo systemctl start ceph-mds@${MDS_ID}
         fi
     else
         sudo service ceph start
@@ -690,7 +755,7 @@ function start_ceph {
 
 # stop_ceph() - Stop running processes (non-screen)
 function stop_ceph {
-    if is_ubuntu; then
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
         sudo stop ceph-mon-all > /dev/null 2>&1
         sudo stop ceph-osd-all > /dev/null 2>&1
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
@@ -699,9 +764,24 @@ function stop_ceph {
         if is_ceph_enabled_for_service manila; then
             sudo service ceph-mds-all stop > /dev/null 2>&1
         fi
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+            sudo systemctl stop ceph-radosgw@rgw.$(hostname)
+        fi
+        if is_ceph_enabled_for_service manila; then
+            sudo systemctl stop ceph-mds@${MDS_ID}
+        fi
+        # if mon is dead or unhealthy we won't get the list
+        # of osds but should continue anyways.
+        ids=$(sudo ceph -c ${CEPH_CONF_FILE} osd ls 2>/dev/null --connect-timeout 5)
+        for id in $ids; do
+            sudo systemctl stop ceph-osd@$id
+        done
+        sudo systemctl stop ceph-mon@$(hostname)
     else
         sudo service ceph stop > /dev/null 2>&1
     fi
+
 }
 
 # Restore xtrace
