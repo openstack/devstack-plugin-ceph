@@ -104,8 +104,11 @@ REMOTE_CEPH_RGW=$(trueorfalse False REMOTE_CEPH_RGW)
 # bug 1463525.
 ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
 
-# The gate will configure a package mirror for ceph packages
-APT_REPOSITORY_FILE="/etc/apt/sources.list.d/ceph-deb-hammer.list"
+# OpenStack CI test instances will have a set of opt in package mirrors in
+# /etc/apt/sources.list.available.d/ which will include the ceph package
+# mirror. If this file exists we can link to it in /etc/apt/sources.list.d/
+# to enable it.
+APT_REPOSITORY_FILE="/etc/apt/sources.list.available.d/ceph-deb-hammer.list"
 # If the package mirror file doesn't exist, fetch from here
 APT_REPOSITORY_ENTRY="\
     deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
@@ -692,7 +695,15 @@ function install_ceph {
 
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
 
-        elif [ ! -f "$APT_REPOSITORY_FILE" ]; then
+        elif [ -f "$APT_REPOSITORY_FILE" ]; then
+            # Opt into Openstack CI provided package repo mirror
+            if [ -f "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)" ] ; then
+                # This case can be removed once the CI images are updated to
+                # remove this file.
+                sudo rm "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)"
+            fi
+            sudo ln -s $APT_REPOSITORY_FILE "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)"
+        else
 
             # the gate requires that we use mirrored package repositories for
             # reliability, so the most recent ceph packages are mirrored and
