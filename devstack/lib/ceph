@@ -466,7 +466,9 @@ function _configure_ceph_rgw {
         rgw print continue = false
         rgw frontends = civetweb port=${CEPH_RGW_PORT}
         rgw keystone url = http://${SERVICE_HOST}:35357
-        rgw keystone admin token = ${SERVICE_TOKEN}
+	rgw keystone admin user = radosgw
+	rgw keystone admin password = $SERVICE_PASSWORD
+	rgw keystone admin tenant = $SERVICE_PROJECT_NAME
         rgw keystone accepted roles = Member, _member_, admin
         rgw s3 auth use keystone = true
         nss db path = ${dest}/nss
@@ -504,6 +506,9 @@ function configure_ceph_embedded_rgw {
 
     # Let keystone generate the certs, rgw needs these.
     keystone-manage pki_setup --rebuild
+
+    # Create radosgw service user with admin privileges
+    create_service_user "radosgw" "admin"
 
     # radosgw needs to access keystone's revocation list
     sudo mkdir -p ${dest}/nss
