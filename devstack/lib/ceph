@@ -111,7 +111,7 @@ ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
 APT_REPOSITORY_FILE="/etc/apt/sources.list.available.d/ceph-deb-hammer.list"
 # If the package mirror file doesn't exist, fetch from here
 APT_REPOSITORY_ENTRY="\
-    deb http://ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
+    deb http://download.ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
 
 # Set INIT_SYSTEM to upstart, systemd, or init.  In our domain it should be
 # safe to assume that if the init system is not upstart or systemd that it
