@@ -278,6 +278,9 @@ function cleanup_ceph_embedded {
 
     # purge ceph config file and keys
     sudo rm -rf ${CEPH_CONF_DIR}/*
+
+    # purge repo
+    sudo apt-add-repository --remove "$APT_REPOSITORY_ENTRY"
 }
 
 function cleanup_ceph_general {
