@@ -698,7 +698,7 @@ function install_ceph {
             wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
                 | sudo apt-key add -
 
-            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-x86_64-basic/ref/jewel $(lsb_release -sc) main" | \
+            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-$(uname -m)-basic/ref/jewel $(lsb_release -sc) main" | \
                 sudo tee /etc/apt/sources.list.d/ceph.list
 
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
