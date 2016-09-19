@@ -54,6 +54,7 @@ GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
 GLANCE_CEPH_POOL=${GLANCE_CEPH_POOL:-images}
 GLANCE_CEPH_POOL_PG=${GLANCE_CEPH_POOL_PG:-8}
 GLANCE_CEPH_POOL_PGP=${GLANCE_CEPH_POOL_PGP:-8}
+GLANCE_RGW_BACKEND=${GLANCE_RGW_BACKEND:-False}
 
 # Nova
 NOVA_CEPH_POOL=${NOVA_CEPH_POOL:-vms}
@@ -93,6 +94,7 @@ CEPH_REPLICAS_SEQ=$(seq ${CEPH_REPLICAS})
 
 # Rados gateway
 CEPH_RGW_PORT=${CEPH_RGW_PORT:-8080}
+CEPH_RGW_IDENTITY_API_VERSION=${CEPH_RGW_IDENTITY_API_VERSION:-2.0}
 
 # Connect to an existing Ceph cluster
 REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
@@ -468,16 +470,27 @@ function _configure_ceph_rgw {
         rgw data = ${dest}
         rgw print continue = false
         rgw frontends = civetweb port=${CEPH_RGW_PORT}
+
         rgw keystone url = http://${SERVICE_HOST}:35357
-	rgw keystone admin user = radosgw
-	rgw keystone admin password = $SERVICE_PASSWORD
-	rgw keystone admin tenant = $SERVICE_PROJECT_NAME
-        rgw keystone accepted roles = Member, _member_, admin
         rgw s3 auth use keystone = true
         nss db path = ${dest}/nss
+        rgw keystone admin user = radosgw
+        rgw keystone admin password = $SERVICE_PASSWORD
+        rgw keystone accepted roles = Member, _member_, admin, ResellerAdmin
 EOF
+        if [[ $CEPH_RGW_KEYSTONE_API_VERSION == '2.0' && \
+            ! "$(grep -sq "rgw keystone admin tenant = $SERVICE_PROJECT_NAME" ${CEPH_CONF_FILE} )" ]]; then
+            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+        rgw keystone admin tenant = $SERVICE_PROJECT_NAME
+EOF
+        else
+            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+        rgw keystone admin project = $SERVICE_PROJECT_NAME
+        rgw keystone admin domain = $SERVICE_DOMAIN_NAME
+        rgw keystone api version = 3
+EOF
+        fi
     fi
-
 }
 
 function _create_swift_endpoint {
@@ -543,25 +556,47 @@ function configure_ceph_embedded_glance {
 
 # configure_ceph_glance() - Glance config needs to come after Glance is set up
 function configure_ceph_glance {
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
-        ${GLANCE_CEPH_POOL} ${GLANCE_CEPH_POOL_PG} ${GLANCE_CEPH_POOL_PGP}
+    if [[ "$GLANCE_RGW_BACKEND" = "True" && "$ENABLE_CEPH_RGW" = "True" ]]; then
+        # common glance accounts for swift
+        create_service_user "glance-swift" "ResellerAdmin"
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 user $SERVICE_PROJECT_NAME:glance-swift
 
-    sudo ceph -c ${CEPH_CONF_FILE} auth \
-        get-or-create client.${GLANCE_CEPH_USER} \
-        mon "allow r" \
-        osd "allow class-read object_prefix rbd_children, \
-        allow rwx pool=${GLANCE_CEPH_POOL}" | \
-        sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+        AUTH_URL=$KEYSTONE_SERVICE_URI/v$CEPH_RGW_KEYSTONE_API_VERSION
 
-    sudo chown ${STACK_USER}:$(id -g -n $whoami) \
-        ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 key $SERVICE_PASSWORD
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_address $AUTH_URL
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 user_domain_name $SERVICE_DOMAIN_NAME
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 project_domain_name $SERVICE_DOMAIN_NAME
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_version $CEPH_RGW_KEYSTONE_API_VERSION
 
-    iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
-    iniset $GLANCE_API_CONF glance_store default_store rbd
-    iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
-    iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
-    iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
-    iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
+        iniset $GLANCE_API_CONF glance_store default_store swift
+        iniset $GLANCE_API_CONF glance_store swift_store_create_container_on_put True
+
+        iniset $GLANCE_API_CONF glance_store swift_store_config_file $GLANCE_SWIFT_STORE_CONF
+        iniset $GLANCE_API_CONF glance_store default_swift_reference ref1
+        iniset $GLANCE_API_CONF glance_store stores "file, http, swift"
+
+    else
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+            ${GLANCE_CEPH_POOL} ${GLANCE_CEPH_POOL_PG} ${GLANCE_CEPH_POOL_PGP}
+
+        sudo ceph -c ${CEPH_CONF_FILE} auth \
+            get-or-create client.${GLANCE_CEPH_USER} \
+            mon "allow r" \
+            osd "allow class-read object_prefix rbd_children, \
+            allow rwx pool=${GLANCE_CEPH_POOL}" | \
+            sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+
+        sudo chown ${STACK_USER}:$(id -g -n $whoami) \
+            ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
+
+        iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
+        iniset $GLANCE_API_CONF glance_store default_store rbd
+        iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
+        iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
+        iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
+        iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
+    fi
 }
 
 function configure_ceph_manila {
