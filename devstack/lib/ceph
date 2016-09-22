@@ -17,6 +17,7 @@
 # - start_ceph
 # - stop_ceph
 # - cleanup_ceph
+# - cleanup_containerized_ceph
 
 # Save trace setting
 XTRACE=$(set +o | grep xtrace)
@@ -27,6 +28,9 @@ set +o xtrace
 # --------
 
 CEPH_RELEASE=${CEPH_RELEASE:-hammer}
+
+# Deploy a Ceph demo container instead of a non-containerized version
+CEPH_CONTAINERIZED=$(trueorfalse False CEPH_CONTAINERIZED)
 
 # Set ``CEPH_DATA_DIR`` to the location of Ceph drives and objects.
 # Default is the common DevStack data directory.
@@ -96,6 +100,10 @@ CEPH_REPLICAS_SEQ=$(seq ${CEPH_REPLICAS})
 CEPH_RGW_PORT=${CEPH_RGW_PORT:-8080}
 CEPH_RGW_IDENTITY_API_VERSION=${CEPH_RGW_IDENTITY_API_VERSION:-2.0}
 
+# Ceph REST API (for containerized version only)
+# Default is 5000, but Keystone already listens on 5000
+CEPH_REST_API_PORT=${CEPH_REST_API_PORT:-5001}
+
 # Connect to an existing Ceph cluster
 REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
 REMOTE_CEPH_ADMIN_KEY_PATH=\
@@ -130,6 +138,44 @@ RUN_AS='unknown'
 
 # Functions
 # ------------
+
+# Containerized Ceph
+function deploy_containerized_ceph {
+    install_package docker docker.io ceph-common
+    DOCKER_EXEC="docker exec ceph-demo"
+    initial_configure_ceph
+    sudo docker run -d \
+    --name ceph-demo \
+    --net=host \
+    -v ${CEPH_CONF_DIR}:${CEPH_CONF_DIR} \
+    -v ${CEPH_DATA_DIR}:${CEPH_DATA_DIR} \
+    -e MON_IP=${SERVICE_HOST} \
+    -e CEPH_PUBLIC_NETWORK=$(grep -o ${SERVICE_HOST%??}0/.. /proc/net/fib_trie | head -1) \
+    -e RGW_CIVETWEB_PORT=${CEPH_RGW_PORT} \
+    -e RESTAPI_PORT=${CEPH_REST_API_PORT} \
+    ceph/demo
+
+    # wait for ceph to be healthy then continue
+    ceph_status
+}
+
+function wait_for_daemon {
+    timeout=20
+    daemon_to_test=$1
+    while [ $timeout -ne 0 ]; do
+        if eval $daemon_to_test; then
+            return 0
+        fi
+        sleep 1
+        let timeout=timeout-1
+    done
+    return 1
+}
+
+function ceph_status {
+    echo "Waiting for Ceph to be ready"
+    return $(wait_for_daemon "sudo docker exec ceph-demo ceph health | grep -sq HEALTH_OK")
+}
 
 # is_ceph_enabled_for_service() - checks whether the OpenStack service
 # specified as an argument is enabled with Ceph as its storage backend.
@@ -289,6 +335,20 @@ function cleanup_ceph_general {
     _undefine_virsh_secret
 }
 
+function cleanup_containerized_ceph {
+    sudo docker rm -f ceph-demo
+    sudo rm -rf ${CEPH_CONF_DIR}/*
+    sudo rm -rf ${CEPH_DATA_DIR}
+}
+
+function initial_configure_ceph {
+    # create a backing file disk
+    create_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR} ${CEPH_LOOPBACK_DISK_SIZE}
+
+    # populate ceph directory
+    sudo mkdir -p \
+        ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
+}
 # configure_ceph() - Set config files, create data dirs, etc
 function configure_ceph {
     local count=0
@@ -297,12 +357,7 @@ function configure_ceph {
     RUN_AS=$(_run_as_ceph_or_root)
     echo "ceph daemons will run as $RUN_AS"
 
-    # create a backing file disk
-    create_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR} ${CEPH_LOOPBACK_DISK_SIZE}
-
-    # populate ceph directory
-    sudo mkdir -p \
-        ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
+    initial_configure_ceph
 
     # create ceph monitor initial key and directory
     sudo ceph-authtool ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname) \
@@ -357,8 +412,8 @@ EOF
         sleep 5
     done
 
-    # create a simple rule to take OSDs instead of host with CRUSH
-    # then apply this rules to the default pool
+    # create a simple rule to take OSDs instead of hosts with CRUSH
+    # then apply this rule to the default pool
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
         sudo ceph -c ${CEPH_CONF_FILE} \
             osd crush rule create-simple devstack default osd
@@ -432,33 +487,8 @@ EOF
     fi
 }
 
-function _configure_ceph_rgw {
-    # bootstrap rados gateway
-    local dest key
-    if [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        dest=${CEPH_DATA_DIR}/radosgw/ceph-rgw.$(hostname)
-        key=client.rgw.$(hostname)
-    else
-        dest=${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
-        key=client.radosgw.$(hostname)
-    fi
-    sudo mkdir -p $dest
-    sudo ceph auth get-or-create $key \
-        osd 'allow rwx' mon 'allow rw' \
-        -o ${dest}/keyring
-
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo touch ${dest}/{upstart,done}
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
-    else
-        sudo touch ${dest}/{sysvinit,done}
-    fi
-
-    if [[ $RUN_AS == 'ceph' ]] ; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
-    fi
-
+function _configure_rgw_ceph_section {
+    configure_ceph_embedded_rgw_paths
     if [[ ! "$(egrep "\[${key}\]" ${CEPH_CONF_FILE})" ]]; then
         cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
 
@@ -493,6 +523,33 @@ EOF
     fi
 }
 
+function _configure_ceph_rgw_container {
+    _configure_rgw_ceph_section
+    sudo docker restart ceph-demo
+}
+
+function _configure_ceph_rgw {
+    # bootstrap rados gateway
+    _configure_rgw_ceph_section
+    sudo mkdir -p $dest
+    sudo ceph auth get-or-create $key \
+        osd 'allow rwx' mon 'allow rw' \
+        -o ${dest}/keyring
+
+    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
+        sudo touch ${dest}/{upstart,done}
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
+    else
+        sudo touch ${dest}/{sysvinit,done}
+    fi
+
+    if [[ $RUN_AS == 'ceph' ]] ; then
+        sudo chown -R ceph. ${CEPH_DATA_DIR}
+    fi
+
+}
+
 function _create_swift_endpoint {
 
     local swift_service
@@ -505,16 +562,21 @@ function _create_swift_endpoint {
         "$REGION_NAME" $swift_endpoint $swift_endpoint $swift_endpoint
 }
 
-function configure_ceph_embedded_rgw {
-    local dest key
-    if [[ $INIT_SYSTEM == 'systemd' ]] ; then
+function configure_ceph_embedded_rgw_paths {
+    if [[ "$CEPH_CONTAINERIZED" == "True" ]]; then
+        dest=${CEPH_DATA_DIR}/radosgw/$(hostname)
+        key=client.radosgw.gateway
+    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
         dest=${CEPH_DATA_DIR}/radosgw/ceph-rgw.$(hostname)
         key=client.rgw.$(hostname)
     else
         dest=${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
         key=client.radosgw.$(hostname)
     fi
+}
 
+function configure_ceph_embedded_rgw {
+    configure_ceph_embedded_rgw_paths
     # keystone endpoint for radosgw
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
         _create_swift_endpoint
@@ -533,7 +595,9 @@ function configure_ceph_embedded_rgw {
 
     sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
         sudo certutil -A -d ${dest}/nss -n signing_cert -t "P,P,P"
+}
 
+function start_ceph_embedded_rgw {
     # radosgw service is started here as it needs the keystone pki_setup as a
     # pre-requisite
     if [[ $INIT_SYSTEM == 'upstart' ]] ; then
@@ -549,7 +613,7 @@ function configure_ceph_embedded_rgw {
 function configure_ceph_embedded_glance {
     # configure Glance service options, ceph pool, ceph user and ceph key
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool \
             set ${GLANCE_CEPH_POOL} crush_ruleset ${RULE_ID}
     fi
 }
@@ -577,10 +641,10 @@ function configure_ceph_glance {
         iniset $GLANCE_API_CONF glance_store stores "file, http, swift"
 
     else
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create \
             ${GLANCE_CEPH_POOL} ${GLANCE_CEPH_POOL_PG} ${GLANCE_CEPH_POOL_PGP}
 
-        sudo ceph -c ${CEPH_CONF_FILE} auth \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} auth \
             get-or-create client.${GLANCE_CEPH_USER} \
             mon "allow r" \
             osd "allow class-read object_prefix rbd_children, \
@@ -600,24 +664,24 @@ function configure_ceph_glance {
 }
 
 function configure_ceph_manila {
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool create ${CEPHFS_METADATA_POOL} \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create ${CEPHFS_METADATA_POOL} \
         ${CEPHFS_POOL_PG}
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool create ${CEPHFS_DATA_POOL} \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create ${CEPHFS_DATA_POOL} \
         ${CEPHFS_POOL_PG}
     if [[ ${CEPHFS_MULTIPLE_FILESYSTEMS} == 'True' ]]; then
         sudo ceph -c ${CEPH_CONF_FILE} fs flag set enable_multiple true \
             --yes-i-really-mean-it
     fi
-    sudo ceph -c ${CEPH_CONF_FILE} fs new ${CEPHFS_FILESYSTEM} ${CEPHFS_METADATA_POOL} \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} fs new ${CEPHFS_FILESYSTEM} ${CEPHFS_METADATA_POOL} \
         ${CEPHFS_DATA_POOL}
-    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} auth get-or-create \
         client.${MANILA_CEPH_USER} \
         mon "allow *" osd "allow rw" mds "allow *" \
         -o ${CEPH_CONF_DIR}/ceph.client.${MANILA_CEPH_USER}.keyring
     sudo chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.client.${MANILA_CEPH_USER}.keyring
     # Enable snapshots in CephFS.
-    sudo ceph -c ${CEPH_CONF_FILE} mds set allow_new_snaps true \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} mds set allow_new_snaps true \
         --yes-i-really-mean-it
 
     # Make manila's libcephfs client a root user.
@@ -628,13 +692,15 @@ function configure_ceph_manila {
     client mount gid = 0
 EOF
 
+# RESTART DOCKER CONTAINER
+
 }
 
 function configure_ceph_embedded_manila {
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_DATA_POOL} \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_DATA_POOL} \
             crush_ruleset ${RULE_ID}
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_METADATA_POOL} \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool set ${CEPHFS_METADATA_POOL} \
             crush_ruleset ${RULE_ID}
     fi
 }
@@ -643,14 +709,14 @@ function configure_ceph_embedded_nova {
     # configure Nova service options, ceph pool, ceph user and ceph key
 
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool \
             set ${NOVA_CEPH_POOL} crush_ruleset ${RULE_ID}
     fi
 }
 
 # configure_ceph_nova() - Nova config needs to come after Nova is set up
 function configure_ceph_nova {
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create \
         ${NOVA_CEPH_POOL} ${NOVA_CEPH_POOL_PG} ${NOVA_CEPH_POOL_PGP}
 
     iniset $NOVA_CONF libvirt rbd_user ${CINDER_CEPH_USER}
@@ -663,7 +729,7 @@ function configure_ceph_nova {
     iniset $NOVA_CONF libvirt images_rbd_ceph_conf ${CEPH_CONF_FILE}
 
     if ! is_ceph_enabled_for_service cinder; then
-        sudo ceph -c ${CEPH_CONF_FILE} \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} \
             auth get-or-create client.${CINDER_CEPH_USER} \
             mon "allow r" \
             osd "allow class-read object_prefix rbd_children, \
@@ -683,17 +749,17 @@ function configure_ceph_embedded_cinder {
     # Configure Cinder service options, ceph pool, ceph user and ceph key
 
     if [[ $CEPH_REPLICAS -ne 1 ]]; then
-        sudo ceph -c ${CEPH_CONF_FILE} osd pool \
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool \
             set ${CINDER_CEPH_POOL} crush_ruleset ${RULE_ID}
     fi
 }
 
 # configure_ceph_cinder() - Cinder config needs to come after Cinder is set up
 function configure_ceph_cinder {
-    sudo ceph -c ${CEPH_CONF_FILE} osd pool create \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create \
         ${CINDER_CEPH_POOL} ${CINDER_CEPH_POOL_PG} ${CINDER_CEPH_POOL_PGP}
 
-    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} auth get-or-create \
         client.${CINDER_CEPH_USER} \
         mon "allow r" \
         osd "allow class-read object_prefix rbd_children, \

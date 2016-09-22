@@ -12,16 +12,21 @@ elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
     echo_summary "Installing Ceph"
     check_os_support_ceph
     if [ "$REMOTE_CEPH" = "False" ]; then
-        install_ceph
-        echo_summary "Configuring Ceph"
-        configure_ceph
-        # NOTE (leseb): we do everything here
-        # because we need to have Ceph started before the main
-        # OpenStack components.
-        # Ceph OSD must start here otherwise we can't upload any images.
-        echo_summary "Initializing Ceph"
-        init_ceph
-        start_ceph
+        if [ "$CEPH_CONTAINERIZED" = "True" ]; then
+            echo_summary "Configuring and initializing Ceph"
+            deploy_containerized_ceph
+        else
+            install_ceph
+            echo_summary "Configuring Ceph"
+            configure_ceph
+            # NOTE (leseb): we do everything here
+            # because we need to have Ceph started before the main
+            # OpenStack components.
+            # Ceph OSD must start here otherwise we can't upload any images.
+            echo_summary "Initializing Ceph"
+            init_ceph
+            start_ceph
+        fi
     else
         install_ceph_remote
     fi
@@ -70,16 +75,25 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
             echo_summary "Configuring Rados Gateway with Keystone for Swift"
             configure_ceph_embedded_rgw
+            if [ "$CEPH_CONTAINERIZED" = "False" ]; then
+                start_ceph_embedded_rgw
+            else
+                _configure_ceph_rgw_container
+            fi
         fi
     fi
 fi
 
 if [[ "$1" == "unstack" ]]; then
-    if [ "$REMOTE_CEPH" = "True" ]; then
-        cleanup_ceph_remote
+    if [ "$CEPH_CONTAINERIZED" = "False" ]; then
+        if [ "$REMOTE_CEPH" = "True" ]; then
+            cleanup_ceph_remote
+        else
+            stop_ceph
+            cleanup_ceph_embedded
+        fi
     else
-        stop_ceph
-        cleanup_ceph_embedded
+        cleanup_containerized_ceph
     fi
     cleanup_ceph_general
 fi
