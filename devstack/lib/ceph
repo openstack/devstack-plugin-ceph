@@ -49,6 +49,9 @@ ${CEPH_LOOPBACK_DISK_SIZE:-$CEPH_LOOPBACK_DISK_SIZE_DEFAULT}
 CEPH_FSID=$(uuidgen)
 CEPH_CONF_FILE=${CEPH_CONF_DIR}/ceph.conf
 
+# RBD configuration defaults
+CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-1}
+
 # Glance
 GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
 GLANCE_CEPH_POOL=${GLANCE_CEPH_POOL:-images}
@@ -324,6 +327,7 @@ function configure_ceph {
     osd crush chooseleaf type = 0
     osd journal size = 100
     osd pool default size = ${CEPH_REPLICAS}
+    rbd default features = ${CEPH_RBD_DEFAULT_FEATURES}
 EOF
 
     # bootstrap the ceph monitor
