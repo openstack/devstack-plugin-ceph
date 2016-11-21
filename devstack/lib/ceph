@@ -281,36 +281,36 @@ function check_os_support_ceph {
 function cleanup_ceph_remote {
     # do a proper cleanup from here to avoid leftover on the remote Ceph cluster
     if is_ceph_enabled_for_service glance; then
-        sudo ceph osd pool delete $GLANCE_CEPH_POOL $GLANCE_CEPH_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $GLANCE_CEPH_POOL $GLANCE_CEPH_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
 
-        sudo ceph auth del client.$GLANCE_CEPH_USER > /dev/null 2>&1
+        sudo ceph -c ${CEPH_CONF_FILE} auth del client.$GLANCE_CEPH_USER > /dev/null 2>&1
     fi
     if is_ceph_enabled_for_service cinder; then
-        sudo ceph osd pool delete $CINDER_CEPH_POOL $CINDER_CEPH_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $CINDER_CEPH_POOL $CINDER_CEPH_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
 
-        sudo ceph auth del client.$CINDER_CEPH_USER > /dev/null 2>&1
+        sudo ceph -c ${CEPH_CONF_FILE} auth del client.$CINDER_CEPH_USER > /dev/null 2>&1
     fi
     if is_ceph_enabled_for_service c-bak; then
-        sudo ceph osd pool delete $CINDER_BAK_CEPH_POOL $CINDER_BAK_CEPH_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $CINDER_BAK_CEPH_POOL $CINDER_BAK_CEPH_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
 
-        sudo ceph auth del client.$CINDER_BAK_CEPH_USER > /dev/null 2>&1
+        sudo ceph -c ${CEPH_CONF_FILE} auth del client.$CINDER_BAK_CEPH_USER > /dev/null 2>&1
     fi
     if is_ceph_enabled_for_service nova; then
         iniset $NOVA_CONF libvirt rbd_secret_uuid ""
-        sudo ceph osd pool delete $NOVA_CEPH_POOL $NOVA_CEPH_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $NOVA_CEPH_POOL $NOVA_CEPH_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
     fi
     if is_ceph_enabled_for_service manila; then
         sudo ceph -c ${CEPH_CONF_FILE} fs rm $CEPHFS_FILESYSTEM \
             --yes-i-really-mean-it
-        sudo ceph osd pool delete $CEPHFS_METADATA_POOL $CEPHFS_METADATA_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $CEPHFS_METADATA_POOL $CEPHFS_METADATA_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
-        sudo ceph osd pool delete $CEPHFS_DATA_POOL $CEPHFS_DATA_POOL \
+        sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $CEPHFS_DATA_POOL $CEPHFS_DATA_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
-        sudo ceph auth del client.$MANILA_CEPH_USER > /dev/null 2>&1
+        sudo ceph -c ${CEPH_CONF_FILE} auth del client.$MANILA_CEPH_USER > /dev/null 2>&1
     fi
 }
 
