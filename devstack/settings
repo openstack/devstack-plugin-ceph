@@ -12,7 +12,10 @@ CEPH_PLUGIN_DIR=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
 #       anyways.
 
 TEMPEST_STORAGE_PROTOCOL=ceph
-CEPH_LOOPBACK_DISK_SIZE=8G
+# VOLUME_BACKING_FILE_SIZE should be sourced from devstack/stackrc but define
+# a default here if not set already.
+VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-8GB}
+CEPH_LOOPBACK_DISK_SIZE=${CEPH_LOOPBACK_DISK_SIZE:-$VOLUME_BACKING_FILE_SIZE}
 
 # Source plugin's lib/ceph
 source $CEPH_PLUGIN_DIR/lib/ceph

@@ -44,8 +44,8 @@ CEPH_CONF_DIR=${CEPH_CONF_DIR:-/etc/ceph}
 # DevStack will create a loop-back disk formatted as XFS to store the
 # Ceph data. Set ``CEPH_LOOPBACK_DISK_SIZE`` to the disk size in
 # kilobytes.
-# Default is 1 gigabyte.
-CEPH_LOOPBACK_DISK_SIZE_DEFAULT=8G
+# Default is 10 gigabytes.
+CEPH_LOOPBACK_DISK_SIZE_DEFAULT=${CEPH_LOOPBACK_DISK_SIZE_DEFAULT:-$VOLUME_BACKING_FILE_SIZE}
 CEPH_LOOPBACK_DISK_SIZE=\
 ${CEPH_LOOPBACK_DISK_SIZE:-$CEPH_LOOPBACK_DISK_SIZE_DEFAULT}
 
