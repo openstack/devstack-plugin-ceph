@@ -16,6 +16,8 @@ TEMPEST_STORAGE_PROTOCOL=ceph
 # a default here if not set already.
 VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-8GB}
 CEPH_LOOPBACK_DISK_SIZE=${CEPH_LOOPBACK_DISK_SIZE:-$VOLUME_BACKING_FILE_SIZE}
+# Disable manage/unmanage snapshot tests on Tempest
+TEMPEST_VOLUME_MANAGE_SNAPSHOT=False
 
 # Source plugin's lib/ceph
 source $CEPH_PLUGIN_DIR/lib/ceph
