@@ -82,7 +82,13 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
             fi
         fi
     fi
+elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
+    if is_service_enabled tempest; then
+        iniset $TEMPEST_CONFIG compute-feature-enabled swap_volume False
+    fi
 fi
+
+
 
 if [[ "$1" == "unstack" ]]; then
     if [ "$CEPH_CONTAINERIZED" = "False" ]; then
