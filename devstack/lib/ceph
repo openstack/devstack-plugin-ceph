@@ -800,10 +800,12 @@ function install_ceph {
         install_package software-properties-common
 
         if is_ceph_enabled_for_service manila; then
-            wget -q -O- 'https://download.ceph.com/keys/autobuild.asc' \
-                | sudo apt-key add -
+            # The 'apt' package manager needs the following package to access
+            # HTTPS enabled repositories such as the Ceph repos hosted by the
+            # shaman/chacra system.
+            install_package apt-transport-https
 
-            echo "deb http://gitbuilder.ceph.com/ceph-deb-$(lsb_release -sc)-$(uname -m)-basic/ref/jewel $(lsb_release -sc) main" | \
+            curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/ubuntu/xenial/repo | \
                 sudo tee /etc/apt/sources.list.d/ceph.list
 
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
