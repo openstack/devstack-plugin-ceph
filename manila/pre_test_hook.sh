@@ -37,27 +37,30 @@ MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 # 'singlebackend' or 'multiplebackend'.
 MANILA_BACKEND_TYPE=$3
 MANILA_BACKEND_TYPE=${MANILA_BACKEND_TYPE:-singlebackend}
+
+localconf=$BASE/new/devstack/local.conf
+
+echo "[[local|localrc]]" >> $localconf
 if [[ $MANILA_BACKEND_TYPE == 'multibackend' ]]; then
-    echo "MANILA_MULTI_BACKEND=True" >> $localrc_path
+    echo "MANILA_MULTI_BACKEND=True" >> $localconf
 elif [[ $MANILA_BACKEND_TYPE == 'singlebackend' ]]; then
-    echo "MANILA_MULTI_BACKEND=False" >> $localrc_path
+    echo "MANILA_MULTI_BACKEND=False" >> $localconf
 fi
 
-localrc_path=$BASE/new/devstack/localrc
-echo "DEVSTACK_GATE_TEMPEST_ALLOW_TENANT_ISOLATION=1" >> $localrc_path
-echo "API_RATE_LIMIT=False" >> $localrc_path
-echo "TEMPEST_SERVICES+=,manila" >> $localrc_path
-echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localrc_path
+echo "DEVSTACK_GATE_TEMPEST_ALLOW_TENANT_ISOLATION=1" >> $localconf
+echo "API_RATE_LIMIT=False" >> $localconf
+echo "TEMPEST_SERVICES+=,manila" >> $localconf
+echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localconf
 
 
 # NOTE(rraja): Enable when need arises, for example, when the CI does scenario
 # testing.
-echo "MANILA_SERVICE_IMAGE_ENABLED=False" >> $localrc_path
+echo "MANILA_SERVICE_IMAGE_ENABLED=False" >> $localconf
 
 # Enable isolated metadata in Neutron because Tempest creates isolated
 # networks and created VMs in scenario tests don't have access to Nova Metadata
 # service. This leads to unavailability of created VMs in scenario tests.
-echo 'ENABLE_ISOLATED_METADATA=True' >> $localrc_path
+echo 'ENABLE_ISOLATED_METADATA=True' >> $localconf
 
 # Go to Tempest dir and checkout stable commit to avoid possible
 # incompatibilities for plugin stored in Manila repo.
