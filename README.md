@@ -56,6 +56,13 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
     ENABLE_CEPH_MANILA=True
     ```
 
+  CephFS Native driver that supports native Ceph protocol is used by default.
+  To use CephFS NFS-Ganesha driver that supports NFS protocol add the setting:
+
+    ```
+    MANILA_CEPH_DRIVER=cephfsnfs
+    ```
+
   Make sure that the manila plugin is enabled before devstack-plugin-ceph in
   the ```local.conf``` file.
 

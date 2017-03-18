@@ -23,21 +23,39 @@ TEMPEST_VOLUME_MANAGE_SNAPSHOT=False
 source $CEPH_PLUGIN_DIR/lib/ceph
 
 # Set Manila related global variables used by Manila's DevStack plugin.
-if (is_ceph_enabled_for_service manila) && \
-[[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
-    MANILA_DHSS=$(trueorfalse False MANILA_DHSS)
-    MANILA_ENABLED_SHARE_PROTOCOLS=CEPHFS
-    MANILA_DEFAULT_SHARE_TYPE=cephfstype
-    # CephFSNative Driver does not yet support creation of shares from
-    # snapshot.
-    MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=False'
+if (is_ceph_enabled_for_service manila); then
+    if [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
+        MANILA_DHSS=$(trueorfalse False MANILA_DHSS)
+        MANILA_ENABLED_SHARE_PROTOCOLS=CEPHFS
+        MANILA_DEFAULT_SHARE_TYPE=cephfstype
+        # CephFSNative Driver does not yet support creation of shares from
+        # snapshot.
+        MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=False'
 
-    MANILA_ENABLED_BACKENDS=cephfsnative1
-    MANILA_CONFIGURE_GROUPS=cephfsnative1
+        MANILA_ENABLED_BACKENDS=cephfsnative1
+        MANILA_CONFIGURE_GROUPS=cephfsnative1
 
-    MANILA_OPTGROUP_cephfsnative1_share_driver=manila.share.drivers.cephfs.cephfs_native.CephFSNativeDriver
-    MANILA_OPTGROUP_cephfsnative1_driver_handles_share_servers=$MANILA_DHSS
-    MANILA_OPTGROUP_cephfsnative1_share_backend_name=CEPHFSNATIVE1
-    MANILA_OPTGROUP_cephfsnative1_cephfs_conf_path=${CEPH_CONF_FILE}
-    MANILA_OPTGROUP_cephfsnative1_cephfs_auth_id=${MANILA_CEPH_USER}
+        MANILA_OPTGROUP_cephfsnative1_share_driver=manila.share.drivers.cephfs.cephfs_native.CephFSNativeDriver
+        MANILA_OPTGROUP_cephfsnative1_driver_handles_share_servers=$MANILA_DHSS
+        MANILA_OPTGROUP_cephfsnative1_share_backend_name=CEPHFSNATIVE1
+        MANILA_OPTGROUP_cephfsnative1_cephfs_conf_path=${CEPH_CONF_FILE}
+        MANILA_OPTGROUP_cephfsnative1_cephfs_auth_id=${MANILA_CEPH_USER}
+    elif [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+        MANILA_DHSS=$(trueorfalse False MANILA_DHSS)
+        MANILA_ENABLED_SHARE_PROTOCOLS=NFS
+        MANILA_DEFAULT_SHARE_TYPE=cephfsnfstype
+        # CephFS Driver does not yet support creation of shares from
+        # snapshot.
+        MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=False'
+
+        MANILA_ENABLED_BACKENDS=cephfsnfs1
+        MANILA_CONFIGURE_GROUPS=cephfsnfs1
+
+        MANILA_OPTGROUP_cephfsnfs1_share_driver=manila.share.drivers.cephfs.driver.CephFSDriver
+        MANILA_OPTGROUP_cephfsnfs1_driver_handles_share_servers=$MANILA_DHSS
+        MANILA_OPTGROUP_cephfsnfs1_share_backend_name=CEPHFSNFS1
+        MANILA_OPTGROUP_cephfsnfs1_cephfs_conf_path=${CEPH_CONF_FILE}
+        MANILA_OPTGROUP_cephfsnfs1_cephfs_auth_id=${MANILA_CEPH_USER}
+        MANILA_OPTGROUP_cephfsnfs1_cephfs_protocol_helper_type=NFS
+    fi
 fi

@@ -336,6 +336,9 @@ function cleanup_ceph_embedded {
 
 function cleanup_ceph_general {
     _undefine_virsh_secret
+    if is_ceph_enabled_for_service manila && [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+        cleanup_nfs_ganesha
+    fi
 }
 
 function cleanup_containerized_ceph {
@@ -702,8 +705,30 @@ function configure_ceph_manila {
     client mount gid = 0
 EOF
 
+    if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+        configure_nfs_ganesha
+        # NFS-Ganesha server cannot run alongwith with other kernel NFS server.
+        sudo systemctl stop nfs-server
+        sudo systemctl disable nfs-server
+        sudo systemctl enable nfs-ganesha
+        sudo systemctl start nfs-ganesha
+    fi
+
 # RESTART DOCKER CONTAINER
 
+}
+
+function configure_nfs_ganesha {
+    # Configure NFS-Ganesha to work with Manila's CephFS driver
+    sudo mkdir -p /etc/ganesha/export.d
+    sudo touch /etc/ganesha/export.d/INDEX.conf
+    echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee  /etc/ganesha/ganesha.conf
+}
+
+function cleanup_nfs_ganesha {
+    sudo systemctl stop nfs-ganesha
+    sudo systemctl disable nfs-ganesha
+    sudo uninstall_package nfs-ganesha nfs-ganesha-ceph
 }
 
 function configure_ceph_embedded_manila {
@@ -806,18 +831,29 @@ function install_ceph {
         install_package software-properties-common
 
         if is_ceph_enabled_for_service manila; then
-            if ! [[ $os_CODENAME =~ (xenial|trusty) ]]; then
-                die $LINENO "Need Ubuntu trusty or xenial to setup Manila with CephFS"
-            fi
             # The 'apt' package manager needs the following package to access
             # HTTPS enabled repositories such as the Ceph repos hosted by the
             # shaman/chacra system.
             install_package apt-transport-https
 
-            curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/ubuntu/$os_CODENAME/repo | \
-                sudo tee /etc/apt/sources.list.d/ceph.list
-
-            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
+            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+                if [ $os_CODENAME != 'xenial' ]; then
+                    die $LINENO "Need Ubuntu xenial to setup Manila with CephFS NFS-Ganesha driver"
+                fi
+                # TODO(rraja): Switch to LTS luminous after spring 2017 release.
+                curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/ubuntu/$os_CODENAME/repo | \
+                    sudo tee /etc/apt/sources.list.d/ceph.list
+                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_kraken/repo | \
+                    sudo tee /etc/apt/sources.list.d/ext-nfs-ganesha.list
+                CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
+            else
+                if ! [[ $os_CODENAME =~ (xenial|trusty) ]]; then
+                    die $LINENO "Need Ubuntu trusty or xenial to setup Manila with CephFS native driver"
+                fi
+                curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/ubuntu/$os_CODENAME/repo | \
+                    sudo tee /etc/apt/sources.list.d/ceph.list
+                CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
+            fi
 
         elif [ -f "$APT_REPOSITORY_FILE" ]; then
             # Opt into Openstack CI provided package repo mirror
@@ -851,7 +887,28 @@ function install_ceph {
         REPOS_UPDATED=False
         install_package ${CEPH_PACKAGES}
     else
+        DISTRO_TYPE=${os_VENDOR,,}
+        RELEASE=$(echo $os_RELEASE | awk -F . '{print $1}')
+
         CEPH_PACKAGES="ceph"
+
+        if is_ceph_enabled_for_service manila; then
+            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+                if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
+                    # TODO(rraja): Switch to LTS luminous after spring 2017 release.
+                    curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/$DISTRO_TYPE/$RELEASE/repo | \
+                        sudo tee /etc/yum.repos.d/ext-ceph.repo
+                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_kraken/repo | \
+                        sudo tee /etc/yum.repos.d/ext-ganesha.repo
+                fi
+                CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
+            else
+                if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
+                    curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/$DISTRO_TYPE/$RELEASE/repo | \
+                        sudo tee /etc/yum.repos.d/ext-ceph.repo
+                fi
+            fi
+        fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
             install_package ceph-radosgw
@@ -905,6 +962,9 @@ function stop_ceph {
         fi
         if is_ceph_enabled_for_service manila; then
             sudo systemctl stop ceph-mds@${MDS_ID}
+            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+                sudo systemctl stop nfs-ganesha
+            fi
         fi
         # if mon is dead or unhealthy we won't get the list
         # of osds but should continue anyways.
