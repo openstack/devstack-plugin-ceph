@@ -404,6 +404,12 @@ EOF
         sudo service ceph start mon.$(hostname)
     fi
 
+    local ceph_version
+    ceph_version=$(_get_ceph_version mon)
+    if [[ $(echo $ceph_version '>=' 11.1 | bc -l) == 1 ]] ; then
+        sudo ceph-create-keys --cluster ceph --id $(hostname)
+    fi
+
     # wait for the admin key to come up
     # otherwise we will not be able to do the actions below
     until [ -f ${CEPH_CONF_DIR}/ceph.client.admin.keyring ]; do
