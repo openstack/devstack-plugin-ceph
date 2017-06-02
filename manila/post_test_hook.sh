@@ -61,6 +61,7 @@ if [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
     RUN_MANILA_MANAGE_TESTS=${RUN_MANILA_MANAGE_TESTS:-False}
     iniset $TEMPEST_CONFIG share run_manage_unmanage_tests $RUN_MANILA_MANAGE_TESTS
 elif [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
+    iniset $TEMPEST_CONFIG share enable_protocols nfs
     iniset $TEMPEST_CONFIG share capability_storage_protocol NFS
     iniset $TEMPEST_CONFIG share enable_ip_rules_for_protocols nfs
 fi
