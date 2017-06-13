@@ -85,6 +85,13 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
 elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
     if is_service_enabled tempest; then
         iniset $TEMPEST_CONFIG compute-feature-enabled swap_volume False
+
+        # This is only being set because the tempest test
+        # test_shelve_unshelve_server fails with an
+        # "After unshelve, shelved image is not deleted"
+        # failure.  Re-enable this feature when that test is fixed.
+        # https://review.openstack.org/#/c/471352/
+        iniset $TEMPEST_CONFIG compute-feature-enabled shelve False
     fi
 fi
 
