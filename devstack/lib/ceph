@@ -840,10 +840,9 @@ function install_ceph {
                 if [ $os_CODENAME != 'xenial' ]; then
                     die $LINENO "Need Ubuntu xenial to setup Manila with CephFS NFS-Ganesha driver"
                 fi
-                # TODO(rraja): Switch to LTS luminous after spring 2017 release.
-                curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/ubuntu/$os_CODENAME/repo | \
+                curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/ubuntu/$os_CODENAME/repo | \
                     sudo tee /etc/apt/sources.list.d/ceph.list
-                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_kraken/repo | \
+                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_luminous/repo | \
                     sudo tee /etc/apt/sources.list.d/ext-nfs-ganesha.list
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
             else
@@ -895,10 +894,9 @@ function install_ceph {
         if is_ceph_enabled_for_service manila; then
             if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
                 if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
-                    # TODO(rraja): Switch to LTS luminous after spring 2017 release.
-                    curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/$DISTRO_TYPE/$RELEASE/repo | \
+                    curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/$DISTRO_TYPE/$RELEASE/repo | \
                         sudo tee /etc/yum.repos.d/ext-ceph.repo
-                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_kraken/repo | \
+                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_luminous/repo | \
                         sudo tee /etc/yum.repos.d/ext-ganesha.repo
                 fi
                 CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
