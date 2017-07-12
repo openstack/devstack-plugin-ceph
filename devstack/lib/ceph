@@ -595,9 +595,6 @@ function configure_ceph_embedded_rgw {
         _create_swift_endpoint
     fi
 
-    # Let keystone generate the certs, rgw needs these.
-    keystone-manage pki_setup --rebuild
-
     # Create radosgw service user with admin privileges
     create_service_user "radosgw" "admin"
 
@@ -611,8 +608,6 @@ function configure_ceph_embedded_rgw {
 }
 
 function start_ceph_embedded_rgw {
-    # radosgw service is started here as it needs the keystone pki_setup as a
-    # pre-requisite
     if [[ $INIT_SYSTEM == 'upstart' ]] ; then
         sudo start radosgw id=radosgw.$(hostname)
     elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
