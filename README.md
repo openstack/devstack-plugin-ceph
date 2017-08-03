@@ -1,7 +1,7 @@
 Team and repository tags
 ========================
 
-[![Team and repository tags](http://governance.openstack.org/badges/devstack-plugin-ceph.svg)](http://governance.openstack.org/reference/tags/index.html)
+[![Team and repository tags](https://governance.openstack.org/tc/badges/devstack-plugin-ceph.svg)](https://governance.openstack.org/tc/reference/tags/index.html)
 
 Devstack Ceph Plugin
 ====================
