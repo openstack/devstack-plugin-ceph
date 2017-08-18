@@ -66,9 +66,7 @@ echo 'ENABLE_ISOLATED_METADATA=True' >> $localconf
 # incompatibilities for plugin stored in Manila repo.
 cd $BASE/new/tempest
 
-# Import to set $MANILA_TEMPEST_COMMIT.
 source $BASE/new/manila/contrib/ci/common.sh
-git checkout $MANILA_TEMPEST_COMMIT
 
 # Print current Tempest status.
 git status
