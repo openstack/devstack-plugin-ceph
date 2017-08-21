@@ -52,6 +52,8 @@ ${CEPH_LOOPBACK_DISK_SIZE:-$CEPH_LOOPBACK_DISK_SIZE_DEFAULT}
 # Common
 CEPH_FSID=$(uuidgen)
 CEPH_CONF_FILE=${CEPH_CONF_DIR}/ceph.conf
+MDS_ID=${MDS_ID:-a}
+MGR_ID=${MGR_ID:-x}
 
 # RBD configuration defaults
 CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-1}
@@ -90,7 +92,6 @@ CEPHFS_DATA_POOL=${CEPHFS_DATA_POOL:-cephfs_data}
 
 MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
-MDS_ID=${MDS_ID:-a}
 
 # Set ``CEPH_REPLICAS`` to configure how many replicas are to be
 # configured for your Ceph cluster. By default we are configuring
@@ -424,6 +425,14 @@ EOF
         fi
         sleep 5
     done
+
+    if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+        sudo mkdir -p ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}
+        sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mgr.${MGR_ID} \
+            mon 'allow profile mgr' mds 'allow *' osd 'allow *' \
+            -o ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}/keyring
+        sudo chown -R ceph. ${CEPH_DATA_DIR}/mgr
+    fi
 
     # create a simple rule to take OSDs instead of hosts with CRUSH
     # then apply this rule to the default pool
@@ -835,9 +844,9 @@ function install_ceph {
                 if [ $os_CODENAME != 'xenial' ]; then
                     die $LINENO "Need Ubuntu xenial to setup Manila with CephFS NFS-Ganesha driver"
                 fi
-                curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/ubuntu/$os_CODENAME/repo | \
+                curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/ubuntu/$os_CODENAME/repo | \
                     sudo tee /etc/apt/sources.list.d/ceph.list
-                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_kraken/repo | \
+                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_luminous/repo | \
                     sudo tee /etc/apt/sources.list.d/ext-nfs-ganesha.list
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
             else
@@ -889,9 +898,9 @@ function install_ceph {
         if is_ceph_enabled_for_service manila; then
             if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
                 if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
-                    curl -L https://shaman.ceph.com/api/repos/ceph/kraken/latest/$DISTRO_TYPE/$RELEASE/repo | \
+                    curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/$DISTRO_TYPE/$RELEASE/repo | \
                         sudo tee /etc/yum.repos.d/ext-ceph.repo
-                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_kraken/repo | \
+                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_luminous/repo | \
                         sudo tee /etc/yum.repos.d/ext-ganesha.repo
                 fi
                 CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
@@ -927,6 +936,16 @@ function start_ceph {
         fi
     elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
         sudo systemctl start ceph-mon@$(hostname)
+        local ceph_version
+        ceph_version=$(_get_ceph_version mon)
+        if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+            sudo systemctl start ceph-mgr@${MGR_ID}
+            # use `tell mgr` as the mgr might not have been activated
+            # yet to register the python module commands.
+            if ! sudo ceph -c ${CEPH_CONF_FILE} tell mgr restful create-self-signed-cert; then
+                echo MGR Restful is not working, perhaps the package is not installed?
+            fi
+        fi
         for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
             sudo systemctl start ceph-osd@$id
         done
@@ -965,6 +984,11 @@ function stop_ceph {
         for id in $ids; do
             sudo systemctl stop ceph-osd@$id
         done
+        local ceph_version
+        ceph_version=$(_get_ceph_version cli)
+        if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+            sudo systemctl stop ceph-mgr@${MGR_ID}
+        fi
         sudo systemctl stop ceph-mon@$(hostname)
     else
         sudo service ceph stop > /dev/null 2>&1
