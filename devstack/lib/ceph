@@ -831,7 +831,10 @@ function install_ceph_remote {
 
 function install_ceph {
     if is_ubuntu; then
-        CEPH_PACKAGES="ceph libnss3-tools python3-rados python3-rbd"
+        CEPH_PACKAGES="ceph libnss3-tools"
+        if python3_enabled; then
+            CEPH_PACKAGES="$CEPH_PACKAGES python3-rados python3-rbd"
+        fi
         install_package software-properties-common
 
         if is_ceph_enabled_for_service manila; then
