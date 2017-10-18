@@ -14,8 +14,8 @@
 
 # This script is executed inside post_test_hook function in devstack gate.
 
-sudo chown -R jenkins:stack $BASE/new/tempest
-sudo chown -R jenkins:stack $BASE/data/tempest
+sudo chown -R $USER:stack $BASE/new/tempest
+sudo chown -R $USER:stack $BASE/data/tempest
 sudo chmod -R o+rx $BASE/new/devstack/files
 
 # Import devstack functions 'iniset'.
@@ -140,4 +140,4 @@ elif [[ $MANILA_TEST_TYPE == 'scenario' ]]; then
 fi
 export MANILA_TEMPEST_CONCURRENCY=${MANILA_TEMPEST_CONCURRENCY:-12}
 
-sudo -H -u jenkins tox -eall-plugin $MANILA_TESTS -- --concurrency=$MANILA_TEMPEST_CONCURRENCY
+sudo -H -u $USER tox -eall-plugin $MANILA_TESTS -- --concurrency=$MANILA_TEMPEST_CONCURRENCY
