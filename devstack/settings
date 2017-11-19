@@ -57,5 +57,11 @@ if (is_ceph_enabled_for_service manila); then
         MANILA_OPTGROUP_cephfsnfs1_cephfs_conf_path=${CEPH_CONF_FILE}
         MANILA_OPTGROUP_cephfsnfs1_cephfs_auth_id=${MANILA_CEPH_USER}
         MANILA_OPTGROUP_cephfsnfs1_cephfs_protocol_helper_type=NFS
+
+        MANILA_OPTGROUP_cephfsnfs1_ganesha_rados_store_enable=${MANILA_CEPH_GANESHA_RADOS_STORE}
+        if [ $MANILA_CEPH_GANESHA_RADOS_STORE == 'True' ]; then
+            MANILA_OPTGROUP_cephfsnfs1_ganesha_rados_store_enable=${MANILA_CEPH_GANESHA_RADOS_STORE}
+            MANILA_OPTGROUP_cephfsnfs1_ganesha_rados_store_pool_name=${CEPHFS_DATA_POOL}
+        fi
     fi
 fi

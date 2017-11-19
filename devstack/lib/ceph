@@ -92,6 +92,10 @@ CEPHFS_DATA_POOL=${CEPHFS_DATA_POOL:-cephfs_data}
 
 MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
+# Allows driver to store NFS-Ganesha exports and export counter as
+# RADOS objects in CephFS's data pool. This needs NFS-Ganesha v2.5.4 or later,
+# Ceph v12.2.2 or later, and OpenStack Queens or later.
+MANILA_CEPH_GANESHA_RADOS_STORE=${MANILA_CEPH_GANESHA_RADOS_STORE:-True}
 
 # Set ``CEPH_REPLICAS`` to configure how many replicas are to be
 # configured for your Ceph cluster. By default we are configuring
@@ -715,7 +719,17 @@ EOF
         sudo systemctl stop nfs-server
         sudo systemctl disable nfs-server
         sudo systemctl enable nfs-ganesha
-        sudo systemctl start nfs-ganesha
+        sudo systemctl start nfs-ganesha || (
+            echo "Ganesha didn't start. Let's debug..." >&2
+            sudo systemctl status nfs-ganesha || true
+            echo "**Ganesha conf file**" >&2
+            sudo cat /etc/ganesha/ganesha.conf || true
+            echo "**Ganesha log file**" >&2
+            sudo cat /var/log/ganesha/ganesha.log || true
+            echo "**Exiting**" >&2
+            exit 1
+        )
+        echo "Ganesha started successfully!" >&2
     fi
 
 # RESTART DOCKER CONTAINER
@@ -725,8 +739,20 @@ EOF
 function configure_nfs_ganesha {
     # Configure NFS-Ganesha to work with Manila's CephFS driver
     sudo mkdir -p /etc/ganesha/export.d
-    sudo touch /etc/ganesha/export.d/INDEX.conf
-    echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee  /etc/ganesha/ganesha.conf
+    if [ $MANILA_CEPH_GANESHA_RADOS_STORE == 'True' ]; then
+        # Create an empty placeholder ganesha export index object
+        echo | sudo rados -p ${CEPHFS_DATA_POOL} put ganesha-export-index -
+        cat <<EOF | sudo tee -a /etc/ganesha/ganesha.conf>/dev/null
+RADOS_URLS {
+    ceph_conf = ${CEPH_CONF_FILE};
+    userid = admin;
+}
+%url rados://${CEPHFS_DATA_POOL}/ganesha-export-index
+EOF
+    else
+        sudo touch /etc/ganesha/export.d/INDEX.conf
+        echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee -a /etc/ganesha/ganesha.conf
+    fi
 }
 
 function cleanup_nfs_ganesha {
