@@ -264,10 +264,15 @@ function _undefine_virsh_secret {
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-    if [[ ! ${DISTRO} =~ (trusty|xenial|jessie|sid|f24|f25|rhel7) ]]; then
+    if [[ ! ${DISTRO} =~ f[0-9][0-9] ]]; then
+        # Assume all versions of Fedora are fine as of 2018.
+        return
+    fi
+
+    if [[ ! ${DISTRO} =~ (trusty|xenial|jessie|sid|rhel7) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Firefly release. \
-            Please use Ubuntu Trusty or Fedora 24 (and higher)"
+            Please use Ubuntu Trusty or Fedora 27 (and higher)"
         if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
             die $LINENO "If you wish to install Ceph on this distribution \
                 anyway run with FORCE_CEPH_INSTALL=yes, \
