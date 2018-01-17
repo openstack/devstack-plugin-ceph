@@ -268,7 +268,7 @@ function _undefine_virsh_secret {
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-    if [[ ! ${DISTRO} =~ f[0-9][0-9] ]]; then
+    if [[ ${DISTRO} =~ f[0-9][0-9] ]]; then
         # Assume all versions of Fedora are fine as of 2018.
         return
     fi
