@@ -49,7 +49,6 @@ fi
 
 echo "DEVSTACK_GATE_TEMPEST_ALLOW_TENANT_ISOLATION=1" >> $localconf
 echo "API_RATE_LIMIT=False" >> $localconf
-echo "TEMPEST_SERVICES+=,manila" >> $localconf
 echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localconf
 
 
