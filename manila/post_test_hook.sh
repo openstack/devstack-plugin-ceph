@@ -140,4 +140,4 @@ elif [[ $MANILA_TEST_TYPE == 'scenario' ]]; then
 fi
 export MANILA_TEMPEST_CONCURRENCY=${MANILA_TEMPEST_CONCURRENCY:-12}
 
-sudo -H -u $USER tox -eall -- $MANILA_TESTS --concurrency=$MANILA_TEMPEST_CONCURRENCY
+sudo -H -u $USER tempest run -r $MANILA_TESTS --concurrency=$MANILA_TEMPEST_CONCURRENCY
