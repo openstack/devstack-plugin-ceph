@@ -1,12 +1,80 @@
+- job:
+    name: devstack-plugin-ceph-tempest
+    parent: tempest-full
+    description: |
+      Integration tests that runs with the ceph devstack plugin.
+      Former names for this job where:
+        * legacy-tempest-dsvm-full-devstack-plugin-ceph
+        * gate-tempest-dsvm-full-devstack-plugin-ceph-ubuntu-xenial
+      The original job included support for an un-used tempest-conf.sh:
+        # If an in-repo configuration exists, source it.  This will likely
+        # override DEVSTACK_GATE_TEMPEST_REGEX to further refine the set of
+        # tests being run.
+    required-projects:
+      - openstack/cinder-tempest-plugin
+      - openstack/devstack-plugin-ceph
+    timeout: 7200
+    vars:
+      devstack_plugins:
+        devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
+      devstack_localrc:
+        ENABLE_FILE_INJECTION: false
+        TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+      tox_envlist: all
+      tempest_test_regex: |
+              (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
+      tempest_test_blacklist: |
+              "{{ ansible_user_dir }}/src/git.openstack.org/openstack/devstack-plugin-ceph/tempest_blacklist.txt"
+
+- job:
+    name: devstack-plugin-ceph-tempest-py3
+    parent: tempest-full-py3
+    description: |
+      Integration tests that runs with the ceph devstack plugin and py3.
+      Former names for this job where:
+        * legacy-tempest-dsvm-py35-full-devstack-plugin-ceph
+        * gate-tempest-dsvm-py35-full-devstack-plugin-ceph-ubuntu-xenial-nv
+      The original job included support for an un-used tempest-dsvm-ceph-rc
+      hosted at /opt/stack/new/nova/devstack/tempest-dsvm-ceph-rc.
+    required-projects:
+      - openstack/cinder-tempest-plugin
+      - openstack/devstack-plugin-ceph
+    timeout: 7200
+    vars:
+      devstack_localrc:
+        ENABLE_FILE_INJECTION: false
+        TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+      devstack_plugins:
+        devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
+      tox_envlist: all
+      tempest_test_regex: |
+              (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
+      tempest_test_blacklist: |
+              "{{ ansible_user_dir }}/openstack/devstack-plugin-ceph/tempest_blacklist.txt"
+
+- project-template:
+    name: devstack-plugin-ceph-tempest-jobs
+    description: |
+      Runs devstack-plugin-ceph-tempest jobs.
+    check:
+      jobs:
+        - devstack-plugin-ceph-tempest:
+            voting: false
+            irrelevant-files:
+              - ^.*\.rst$
+              - ^doc/.*$
+        - devstack-plugin-ceph-tempest-py3:
+            voting: false
+            irrelevant-files:
+              - ^.*\.rst$
+              - ^doc/.*$
+
 - project:
+    templates:
+      - devstack-plugin-ceph-tempest-jobs
     check:
       jobs:
         - openstack-tox-bashate
-        - legacy-tempest-dsvm-full-devstack-plugin-ceph:
-            voting: false
-            irrelevant-files:
-              - ^(test-|)requirements.txt$
-              - ^setup.cfg$
         - manila-tempest-minimal-dsvm-cephfs-native-centos-7:
             voting: false
         - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
@@ -16,9 +84,6 @@
         - openstack-tox-bashate
     experimental:
       jobs:
-        - legacy-tempest-dsvm-py35-full-devstack-plugin-ceph:
-            irrelevant-files:
-              - ^(test-|)requirements.txt$
-              - ^setup.cfg$
         - manila-tempest-minimal-py35-dsvm-cephfs-native-centos-7
         - manila-tempest-minimal-py35-dsvm-cephfs-nfs-centos-7
+

@@ -1,0 +1,2 @@
+# List of tests getting skipped
+.*\[.*\bslow\b.*\]
