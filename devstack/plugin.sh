@@ -32,14 +32,16 @@ elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
     fi
 elif [[ "$1" == "stack" && "$2" == "install" ]]; then
     # FIXME(melwitt): This is a hack to get around a namespacing issue with
-    # Paste and PasteDeploy. Recently, we updated to use the Pike UCA packages
+    # Paste and PasteDeploy. For stable/queens, we use the Pike UCA packages
     # and the Ceph packages in the Pike UCA are pulling in python-paste and
     # python-pastedeploy packages. The python-pastedeploy package satisfies the
     # upper-constraints but python-paste does not, so devstack pip installs a
     # newer version of it, while python-pastedeploy remains. The mismatch
     # between the install path of paste and paste.deploy causes Keystone to
     # fail to start, with "ImportError: cannot import name deploy."
-    pip_install -U --force PasteDeploy
+    if [[ "$TARGET_BRANCH" == stable/queens ]]; then
+        pip_install -U --force PasteDeploy
+    fi
 elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
     if is_ceph_enabled_for_service glance; then
         echo_summary "Configuring Glance for Ceph"
