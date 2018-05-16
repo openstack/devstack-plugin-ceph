@@ -106,7 +106,7 @@ CEPH_REPLICAS_SEQ=$(seq ${CEPH_REPLICAS})
 
 # Rados gateway
 CEPH_RGW_PORT=${CEPH_RGW_PORT:-8080}
-CEPH_RGW_IDENTITY_API_VERSION=${CEPH_RGW_IDENTITY_API_VERSION:-2.0}
+CEPH_RGW_IDENTITY_API_VERSION=${CEPH_RGW_IDENTITY_API_VERSION:-3}
 
 # Ceph REST API (for containerized version only)
 # Default is 5000, but Keystone already listens on 5000
@@ -539,7 +539,7 @@ function _configure_rgw_ceph_section {
         rgw keystone admin password = $SERVICE_PASSWORD
         rgw keystone accepted roles = Member, _member_, admin, ResellerAdmin
 EOF
-        if [[ $CEPH_RGW_KEYSTONE_API_VERSION == '2.0' && \
+        if [[ $CEPH_RGW_IDENTITY_API_VERSION == '2.0' && \
             ! "$(grep -sq "rgw keystone admin tenant = $SERVICE_PROJECT_NAME" ${CEPH_CONF_FILE} )" ]]; then
             cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
         rgw keystone admin tenant = $SERVICE_PROJECT_NAME
@@ -651,13 +651,13 @@ function configure_ceph_glance {
         create_service_user "glance-swift" "ResellerAdmin"
         iniset $GLANCE_SWIFT_STORE_CONF ref1 user $SERVICE_PROJECT_NAME:glance-swift
 
-        AUTH_URL=$KEYSTONE_SERVICE_URI/v$CEPH_RGW_KEYSTONE_API_VERSION
+        AUTH_URL=$KEYSTONE_SERVICE_URI/v$CEPH_RGW_IDENTITY_API_VERSION
 
         iniset $GLANCE_SWIFT_STORE_CONF ref1 key $SERVICE_PASSWORD
         iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_address $AUTH_URL
         iniset $GLANCE_SWIFT_STORE_CONF ref1 user_domain_name $SERVICE_DOMAIN_NAME
         iniset $GLANCE_SWIFT_STORE_CONF ref1 project_domain_name $SERVICE_DOMAIN_NAME
-        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_version $CEPH_RGW_KEYSTONE_API_VERSION
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_version $CEPH_RGW_IDENTITY_API_VERSION
 
         iniset $GLANCE_API_CONF glance_store default_store swift
         iniset $GLANCE_API_CONF glance_store swift_store_create_container_on_put True
