@@ -609,9 +609,7 @@ function configure_ceph_embedded_rgw_paths {
 function configure_ceph_embedded_rgw {
     configure_ceph_embedded_rgw_paths
     # keystone endpoint for radosgw
-    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-        _create_swift_endpoint
-    fi
+    _create_swift_endpoint
 
     # Create radosgw service user with admin privileges
     create_service_user "radosgw" "admin"
