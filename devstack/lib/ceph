@@ -384,20 +384,17 @@ function configure_ceph {
     sudo mkdir -p ${CEPH_DATA_DIR}/mon/ceph-$(hostname)
 
     # create a default ceph configuration file
-    cat <<EOF | sudo tee ${CEPH_CONF_FILE}>/dev/null
-    [global]
-    fsid = ${CEPH_FSID}
-    mon_initial_members = $(hostname)
-    mon_host = ${SERVICE_HOST}
-    auth_cluster_required = cephx
-    auth_service_required = cephx
-    auth_client_required = cephx
-    filestore_xattr_use_omap = true
-    osd crush chooseleaf type = 0
-    osd journal size = 100
-    osd pool default size = ${CEPH_REPLICAS}
-    rbd default features = ${CEPH_RBD_DEFAULT_FEATURES}
-EOF
+    iniset -sudo ${CEPH_CONF_FILE} global "fsid" "${CEPH_FSID}"
+    iniset -sudo ${CEPH_CONF_FILE} global "mon_initial_members" "$(hostname)"
+    iniset -sudo ${CEPH_CONF_FILE} global "mon_host" "${SERVICE_HOST}"
+    iniset -sudo ${CEPH_CONF_FILE} global "auth_cluster_required" "cephx"
+    iniset -sudo ${CEPH_CONF_FILE} global "auth_service_required" "cephx"
+    iniset -sudo ${CEPH_CONF_FILE} global "auth_client_required" "cephx"
+    iniset -sudo ${CEPH_CONF_FILE} global "filestore_xattr_use_omap" "true"
+    iniset -sudo ${CEPH_CONF_FILE} global "osd crush chooseleaf type" "0"
+    iniset -sudo ${CEPH_CONF_FILE} global "osd journal size" "100"
+    iniset -sudo ${CEPH_CONF_FILE} global "osd pool default size" "${CEPH_REPLICAS}"
+    iniset -sudo ${CEPH_CONF_FILE} global "rbd default features" "${CEPH_RBD_DEFAULT_FEATURES}"
 
     # bootstrap the ceph monitor
     sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
@@ -521,47 +518,33 @@ EOF
 
 function _configure_rgw_ceph_section {
     configure_ceph_embedded_rgw_paths
-    if [[ ! "$(egrep "\[${key}\]" ${CEPH_CONF_FILE})" ]]; then
-        cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
 
-        [${key}]
-        host = $(hostname)
-        keyring = ${dest}/keyring
-        rgw socket path = /tmp/radosgw-$(hostname).sock
-        log file = /var/log/ceph/radosgw-$(hostname).log
-        rgw data = ${dest}
-        rgw print continue = false
-        rgw frontends = civetweb port=${CEPH_RGW_PORT}
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "host" "$(hostname)"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "keyring" "${dest}/keyring"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw socket path" "/tmp/radosgw-$(hostname).sock"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "log file" "/var/log/ceph/radosgw-$(hostname).log"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw data" "${dest}"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw print continue" "false"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw frontends" "civetweb port=${CEPH_RGW_PORT}"
 
-        rgw keystone url = http://${SERVICE_HOST}:35357
-        rgw s3 auth use keystone = true
-        rgw keystone admin user = radosgw
-        rgw keystone admin password = $SERVICE_PASSWORD
-        rgw keystone accepted roles = Member, _member_, admin, ResellerAdmin
-EOF
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone url" "http://${SERVICE_HOST}:35357"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw s3 auth use keystone" "true"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin user" "radosgw"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin password" "$SERVICE_PASSWORD"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone accepted roles" "Member, _member_, admin, ResellerAdmin"
 
-        if [ "$CEPH_RGW_KEYSTONE_SSL" = "True" ]; then
-            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-        nss db path = ${dest}/nss
-EOF
-        else
-            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-        rgw keystone verify ssl = false
-EOF
-        fi
+    if [ "$CEPH_RGW_KEYSTONE_SSL" = "True" ]; then
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "nss db path" "${dest}/nss"
+    else
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone verify ssl" "false"
+    fi
 
-        if [[ $CEPH_RGW_IDENTITY_API_VERSION == '2.0' && \
-            ! "$(grep -sq "rgw keystone admin tenant = $SERVICE_PROJECT_NAME" ${CEPH_CONF_FILE} )" ]]; then
-            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-        rgw keystone admin tenant = $SERVICE_PROJECT_NAME
-EOF
-        else
-            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-        rgw keystone admin project = $SERVICE_PROJECT_NAME
-        rgw keystone admin domain = $SERVICE_DOMAIN_NAME
-        rgw keystone api version = 3
-EOF
-        fi
+    if [[ $CEPH_RGW_IDENTITY_API_VERSION == '2.0' ]]; then
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin tenant" "$SERVICE_PROJECT_NAME"
+    else
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin project" "$SERVICE_PROJECT_NAME"
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin domain" "$SERVICE_DOMAIN_NAME"
+        iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone api version" "3"
     fi
 }
 
@@ -722,12 +705,8 @@ function configure_ceph_manila {
         --yes-i-really-mean-it
 
     # Make manila's libcephfs client a root user.
-    cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
-
-    [client.${MANILA_CEPH_USER}]
-    client mount uid = 0
-    client mount gid = 0
-EOF
+    iniset -sudo ${CEPH_CONF_FILE} client.${MANILA_CEPH_USER} "client mount uid" "0"
+    iniset -sudo ${CEPH_CONF_FILE} client.${MANILA_CEPH_USER} "client mount gid" "0"
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         configure_nfs_ganesha
