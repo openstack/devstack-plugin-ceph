@@ -23,8 +23,7 @@
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: |
-              "{{ ansible_user_dir }}/src/git.openstack.org/openstack/devstack-plugin-ceph/tempest_blacklist.txt"
+      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.project.src_dir }}/tempest_blacklist.txt'
 
 - job:
     name: devstack-plugin-ceph-tempest-py3
@@ -49,8 +48,7 @@
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: |
-              "{{ ansible_user_dir }}/openstack/devstack-plugin-ceph/tempest_blacklist.txt"
+      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.project.src_dir }}/tempest_blacklist.txt'
 
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
