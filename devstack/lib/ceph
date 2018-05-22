@@ -107,6 +107,7 @@ CEPH_REPLICAS_SEQ=$(seq ${CEPH_REPLICAS})
 # Rados gateway
 CEPH_RGW_PORT=${CEPH_RGW_PORT:-8080}
 CEPH_RGW_IDENTITY_API_VERSION=${CEPH_RGW_IDENTITY_API_VERSION:-3}
+CEPH_RGW_KEYSTONE_SSL=$(trueorfalse False CEPH_RGW_KEYSTONE_SSL)
 
 # Ceph REST API (for containerized version only)
 # Default is 5000, but Keystone already listens on 5000
@@ -534,11 +535,21 @@ function _configure_rgw_ceph_section {
 
         rgw keystone url = http://${SERVICE_HOST}:35357
         rgw s3 auth use keystone = true
-        nss db path = ${dest}/nss
         rgw keystone admin user = radosgw
         rgw keystone admin password = $SERVICE_PASSWORD
         rgw keystone accepted roles = Member, _member_, admin, ResellerAdmin
 EOF
+
+        if [ "$CEPH_RGW_KEYSTONE_SSL" = "True" ]; then
+            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+        nss db path = ${dest}/nss
+EOF
+        else
+            cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
+        rgw keystone verify ssl = false
+EOF
+        fi
+
         if [[ $CEPH_RGW_IDENTITY_API_VERSION == '2.0' && \
             ! "$(grep -sq "rgw keystone admin tenant = $SERVICE_PROJECT_NAME" ${CEPH_CONF_FILE} )" ]]; then
             cat <<EOF | sudo tee -a ${CEPH_CONF_FILE}>/dev/null
@@ -614,13 +625,15 @@ function configure_ceph_embedded_rgw {
     # Create radosgw service user with admin privileges
     create_service_user "radosgw" "admin"
 
-    # radosgw needs to access keystone's revocation list
-    sudo mkdir -p ${dest}/nss
-    sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
-        sudo certutil -d ${dest}/nss -A -n ca -t "TCu,Cu,Tuw"
+    if [ "$CEPH_RGW_KEYSTONE_SSL" = "True" ]; then
+        # radosgw needs to access keystone's revocation list
+        sudo mkdir -p ${dest}/nss
+        sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
+            sudo certutil -d ${dest}/nss -A -n ca -t "TCu,Cu,Tuw"
 
-    sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
-        sudo certutil -A -d ${dest}/nss -n signing_cert -t "P,P,P"
+        sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
+            sudo certutil -A -d ${dest}/nss -n signing_cert -t "P,P,P"
+    fi
 }
 
 function start_ceph_embedded_rgw {
