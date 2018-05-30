@@ -913,15 +913,20 @@ function install_ceph {
         # Update package repo.
         REPOS_UPDATED=False
         install_package ${CEPH_PACKAGES}
-    else
-        DISTRO_TYPE=${os_VENDOR,,}
+    elif is_fedora; then
         RELEASE=$(echo $os_RELEASE | awk -F . '{print $1}')
+        if [ "$os_VENDOR" != "Fedora" ] && [ $RELEASE != 7 ]; then
+            # Fedora proper includes the packages already in the distribution,
+            # while CentOS/RHEL/etc needs to be at version 7.
+            die $LINENO "Need Fedora or CentOS/RHEL/etc 7"
+        fi
+        DISTRO_TYPE=${os_VENDOR,,}
 
         CEPH_PACKAGES="ceph"
 
         if is_ceph_enabled_for_service manila; then
             if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-                if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
+                if [ $DISTRO_TYPE == 'centos' ]; then
                     curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/$DISTRO_TYPE/$RELEASE/repo | \
                         sudo tee /etc/yum.repos.d/ext-ceph.repo
                     curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_luminous/repo | \
@@ -929,19 +934,25 @@ function install_ceph {
                 fi
                 CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
             else
-                if [ $DISTRO_TYPE == 'centos' ] && [ $RELEASE == 7 ]; then
+                if [ $DISTRO_TYPE == 'centos' ]; then
                     curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/$DISTRO_TYPE/$RELEASE/repo | \
                         sudo tee /etc/yum.repos.d/ext-ceph.repo
                 fi
             fi
+        else
+            if [ $DISTRO_TYPE == 'centos' ]; then
+                curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/$DISTRO_TYPE/$RELEASE/repo | \
+                    sudo tee /etc/yum.repos.d/ext-ceph.repo
+            fi
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-            install_package ceph-radosgw
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-radosgw"
         fi
 
         install_package ${CEPH_PACKAGES}
+    else
+        die $LINENO "${os_VENDOR} is not supported by the Ceph plugin for Devstack"
     fi
 }
 
