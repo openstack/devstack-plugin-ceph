@@ -850,6 +850,62 @@ function install_ceph_remote {
     install_package ceph-common
 }
 
+# configure_repo_ceph() - Configure Ceph repositories
+# Usage: configure_repo_ceph <package_manager> <ceph_release> <distro_type> \
+#                            <distro_release> [<repo_type>]
+# - package_manager: apt or yum
+# - ceph_release: jewel, luminous, ...
+# - distro_type: centos, ubuntu
+# - distro_release: 7, xenial
+# - repo_type: latest, stable (only latest is supported right now)
+function configure_repo_ceph {
+    local package_manager="$1"
+    local ceph_release="$2"
+    local distro_type="$3"
+    local distro_release="$4"
+    local repo_type="${5:-latest}"
+
+    local repo_file_name=""
+    if [ "${package_manager}" = "apt" ]; then
+        repo_file_name="/etc/apt/sources.list.d/ceph.list"
+    elif [ "${package_manager}" = "yum" ]; then
+        repo_file_name="/etc/yum.repos.d/ext-ceph.repo"
+    fi
+
+    if [ -n "${repo_file_name}" ]; then
+        curl -L https://shaman.ceph.com/api/repos/ceph/${ceph_release}/latest/${distro_type}/${distro_release}/repo | \
+            sudo tee ${repo_file_name}
+    fi
+}
+
+# configure_repo_nfsganesha() - Configure NFS Ganesha repositories
+# Usage: configure_repo_nfsganesha <package_manager> <ganesha_flavor> \
+#                                  <distro_type> <distro_release> [<repo_type>]
+# - package_manager: apt or yum
+# - flavor: ceph_luminous, ceph_master, ...
+# - distro_type: centos, ubuntu
+# - distro_release: 7, xenial
+# - repo_type: latest (only latest is supported right now)
+function configure_repo_nfsganesha {
+    local package_manager="$1"
+    local ganesha_flavor="$2"
+    local distro_type="$3"
+    local distro_release="$4"
+    local repo_type="${5:-latest}"
+
+    local repo_file_name=""
+    if [ "${package_manager}" = "apt" ]; then
+        repo_file_name="/etc/apt/sources.list.d/ext-nfs-ganesha.list"
+    elif [ "${package_manager}" = "yum" ]; then
+        repo_file_name="/etc/yum.repos.d/ext-nfs-ganesha.repo"
+    fi
+
+    if [ -n "${repo_file_name}" ]; then
+        curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/${distro_type}/${distro_release}/flavors/${ganesha_flavor}/repo | \
+            sudo tee ${repo_file_name}
+    fi
+}
+
 function install_ceph {
     if is_ubuntu; then
         CEPH_PACKAGES="ceph libnss3-tools"
@@ -868,17 +924,14 @@ function install_ceph {
                 if [ $os_CODENAME != 'xenial' ]; then
                     die $LINENO "Need Ubuntu xenial to setup Manila with CephFS NFS-Ganesha driver"
                 fi
-                curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/ubuntu/$os_CODENAME/repo | \
-                    sudo tee /etc/apt/sources.list.d/ceph.list
-                curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/ubuntu/$os_CODENAME/flavors/ceph_luminous/repo | \
-                    sudo tee /etc/apt/sources.list.d/ext-nfs-ganesha.list
+                configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
+                configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
             else
                 if ! [[ $os_CODENAME =~ (xenial|trusty) ]]; then
                     die $LINENO "Need Ubuntu trusty or xenial to setup Manila with CephFS native driver"
                 fi
-                curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/ubuntu/$os_CODENAME/repo | \
-                    sudo tee /etc/apt/sources.list.d/ceph.list
+                configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
             fi
 
@@ -927,22 +980,18 @@ function install_ceph {
         if is_ceph_enabled_for_service manila; then
             if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
                 if [ $DISTRO_TYPE == 'centos' ]; then
-                    curl -L https://shaman.ceph.com/api/repos/ceph/luminous/latest/$DISTRO_TYPE/$RELEASE/repo | \
-                        sudo tee /etc/yum.repos.d/ext-ceph.repo
-                    curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/$DISTRO_TYPE/$RELEASE/flavors/ceph_luminous/repo | \
-                        sudo tee /etc/yum.repos.d/ext-ganesha.repo
+                    configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
+                    configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
                 fi
                 CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
             else
                 if [ $DISTRO_TYPE == 'centos' ]; then
-                    curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/$DISTRO_TYPE/$RELEASE/repo | \
-                        sudo tee /etc/yum.repos.d/ext-ceph.repo
+                    configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
                 fi
             fi
         else
             if [ $DISTRO_TYPE == 'centos' ]; then
-                curl -L https://shaman.ceph.com/api/repos/ceph/jewel/latest/$DISTRO_TYPE/$RELEASE/repo | \
-                    sudo tee /etc/yum.repos.d/ext-ceph.repo
+                configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
             fi
         fi
 
