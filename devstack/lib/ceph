@@ -527,7 +527,7 @@ function _configure_rgw_ceph_section {
     iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw print continue" "false"
     iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw frontends" "civetweb port=${CEPH_RGW_PORT}"
 
-    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone url" "http://${SERVICE_HOST}:35357"
+    iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone url" "$KEYSTONE_SERVICE_URI"
     iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw s3 auth use keystone" "true"
     iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin user" "radosgw"
     iniset -sudo ${CEPH_CONF_FILE} ${key} "rgw keystone admin password" "$SERVICE_PASSWORD"
