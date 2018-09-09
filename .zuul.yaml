@@ -1,0 +1,24 @@
+- project:
+    check:
+      jobs:
+        - openstack-tox-bashate
+        - legacy-tempest-dsvm-full-devstack-plugin-ceph:
+            voting: false
+            irrelevant-files:
+              - ^(test-|)requirements.txt$
+              - ^setup.cfg$
+        - manila-tempest-minimal-dsvm-cephfs-native-centos-7:
+            voting: false
+        - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
+            voting: false
+    gate:
+      jobs:
+        - openstack-tox-bashate
+    experimental:
+      jobs:
+        - legacy-tempest-dsvm-py35-full-devstack-plugin-ceph:
+            irrelevant-files:
+              - ^(test-|)requirements.txt$
+              - ^setup.cfg$
+        - manila-tempest-minimal-py35-dsvm-cephfs-native-centos-7
+        - manila-tempest-minimal-py35-dsvm-cephfs-nfs-centos-7
