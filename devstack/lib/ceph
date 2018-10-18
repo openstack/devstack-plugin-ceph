@@ -214,6 +214,8 @@ function _get_ceph_version {
         ceph_version_str=$(sudo ceph --version | cut -d ' ' -f 3 | \
             cut -d '.' -f 1,2)
     elif [[ $1 == 'mon' ]]; then
+        # TODO(frickler): Find a better way to make sure that ceph-mon has started
+        sleep 5
         ceph_version_str=$(sudo ceph daemon mon.$(hostname) version | \
             cut -d '"' -f 4 | cut -f 1,2 -d '.')
     else
@@ -274,7 +276,7 @@ function check_os_support_ceph {
         return
     fi
 
-    if [[ ! ${DISTRO} =~ (trusty|xenial|jessie|sid|rhel7) ]]; then
+    if [[ ! ${DISTRO} =~ (bionic|trusty|xenial|jessie|sid|rhel7) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Firefly release. \
             Please use Ubuntu Trusty or Fedora 27 (and higher)"
@@ -410,6 +412,8 @@ function configure_ceph {
     elif [[ $INIT_SYSTEM == 'systemd' ]]; then
         sudo systemctl enable ceph-mon@$(hostname)
         sudo systemctl start ceph-mon@$(hostname)
+        # TODO(frickler): Find a better way to make sure that ceph-mon has started
+        sleep 5
     else
         sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/sysvinit
         sudo service ceph start mon.$(hostname)
@@ -935,6 +939,10 @@ function install_ceph {
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
             fi
 
+        elif [[ $os_CODENAME =~ bionic ]]; then
+            # Ceph Luminous is available in Ubuntu bionic natively, no need to set up
+            # any additional repos
+            true
         elif [ -f "$APT_REPOSITORY_FILE" ]; then
             # Opt into Openstack CI provided package repo mirror
             if [ -f "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)" ] ; then
