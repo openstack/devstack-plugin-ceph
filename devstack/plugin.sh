@@ -39,7 +39,7 @@ elif [[ "$1" == "stack" && "$2" == "install" ]]; then
     # newer version of it, while python-pastedeploy remains. The mismatch
     # between the install path of paste and paste.deploy causes Keystone to
     # fail to start, with "ImportError: cannot import name deploy."
-    if [[ "$TARGET_BRANCH" == stable/queens ]]; then
+    if [[ "$TARGET_BRANCH" == stable/queens || "$TARGET_BRANCH" == master ]]; then
         pip_install -U --force PasteDeploy
     fi
 elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
