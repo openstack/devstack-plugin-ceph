@@ -741,7 +741,7 @@ function configure_nfs_ganesha {
     if [ $MANILA_CEPH_GANESHA_RADOS_STORE == 'True' ]; then
         # Create an empty placeholder ganesha export index object
         echo | sudo rados -p ${CEPHFS_DATA_POOL} put ganesha-export-index -
-        cat <<EOF | sudo tee -a /etc/ganesha/ganesha.conf>/dev/null
+        cat <<EOF | sudo tee /etc/ganesha/ganesha.conf>/dev/null
 RADOS_URLS {
     ceph_conf = ${CEPH_CONF_FILE};
     userid = admin;
@@ -750,7 +750,7 @@ RADOS_URLS {
 EOF
     else
         sudo touch /etc/ganesha/export.d/INDEX.conf
-        echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee -a /etc/ganesha/ganesha.conf
+        echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee /etc/ganesha/ganesha.conf
     fi
 }
 
@@ -925,15 +925,15 @@ function install_ceph {
             install_package apt-transport-https
 
             if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-                if [ $os_CODENAME != 'xenial' ]; then
-                    die $LINENO "Need Ubuntu xenial to setup Manila with CephFS NFS-Ganesha driver"
+                if ! [[ $os_CODENAME =~ (xenial|bionic) ]]; then
+                    die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
                 fi
                 configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
                 configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
             else
-                if ! [[ $os_CODENAME =~ (xenial|trusty) ]]; then
-                    die $LINENO "Need Ubuntu trusty or xenial to setup Manila with CephFS native driver"
+                if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
+                    die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
                 fi
                 configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
                 CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
