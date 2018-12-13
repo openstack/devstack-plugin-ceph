@@ -119,9 +119,12 @@ REMOTE_CEPH_ADMIN_KEY_PATH=\
 ${REMOTE_CEPH_ADMIN_KEY_PATH:-$CEPH_CONF_DIR/ceph.client.admin.keyring}
 REMOTE_CEPH_RGW=$(trueorfalse False REMOTE_CEPH_RGW)
 
-# Cinder encrypted volume tests are not supported with a Ceph backend due to
-# bug 1463525.
-ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
+if [[ "$TARGET_BRANCH" == "master" ]]; then
+    # TODO: enable this for Queens and later
+    ATTACH_ENCRYPTED_VOLUME_AVAILABLE=True
+else
+    ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
+fi
 
 # OpenStack CI test instances will have a set of opt in package mirrors in
 # /etc/apt/sources.list.available.d/ which will include the ceph package
