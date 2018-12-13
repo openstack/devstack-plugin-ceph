@@ -1,5 +1,4 @@
 # List of tests getting skipped
-.*\[.*\bslow\b.*\]
 
 # The RBD driver only supports LUKS encryption.
 tempest.scenario.test_encrypted_cinder_volumes.TestEncryptedCinderVolumes.test_encrypted_cinder_volumes_cryptsetup
