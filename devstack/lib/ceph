@@ -718,8 +718,8 @@ function configure_ceph_manila {
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         configure_nfs_ganesha
         # NFS-Ganesha server cannot run alongwith with other kernel NFS server.
-        sudo systemctl stop nfs-server
-        sudo systemctl disable nfs-server
+        sudo systemctl stop nfs-server || true
+        sudo systemctl disable nfs-server || true
         sudo systemctl enable nfs-ganesha
         sudo systemctl start nfs-ganesha || (
             echo "Ganesha didn't start. Let's debug..." >&2
@@ -913,6 +913,52 @@ function configure_repo_nfsganesha {
     fi
 }
 
+function setup_packages_for_manila_on_ubuntu {
+    if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+        if ! [[ $os_CODENAME =~ (xenial|bionic) ]]; then
+            die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
+        fi
+        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
+        # bionic repos are all there already
+        if [[ $os_CODENAME =~ xenial ]]; then
+            # The 'apt' package manager needs the following package to access
+            # HTTPS enabled repositories such as the Ceph repos hosted by the
+            # shaman/chacra system.
+            install_package apt-transport-https
+            configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
+            configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
+        fi
+    else # Native driver
+        if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
+            die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
+        fi
+        if [[ $os_CODENAME =~ (xenial|trusty) ]]; then
+            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
+	    # The 'apt' package manager needs the following package to access
+            # HTTPS enabled repositories such as the Ceph repos hosted by the
+            # shaman/chacra system.
+            install_package apt-transport-https
+            configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
+        else # bionic repos are already there in the distro
+            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
+        fi
+    fi
+}
+
+function setup_packages_for_manila_on_fedora_family {
+    if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+        if [ $DISTRO_TYPE == 'centos' ]; then
+            configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
+            configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
+        fi
+        CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
+    else
+        if [ $DISTRO_TYPE == 'centos' ]; then
+            configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
+        fi
+    fi
+}
+
 function install_ceph {
     if is_ubuntu; then
         CEPH_PACKAGES="ceph libnss3-tools"
@@ -922,26 +968,7 @@ function install_ceph {
         install_package software-properties-common
 
         if is_ceph_enabled_for_service manila; then
-            # The 'apt' package manager needs the following package to access
-            # HTTPS enabled repositories such as the Ceph repos hosted by the
-            # shaman/chacra system.
-            install_package apt-transport-https
-
-            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-                if ! [[ $os_CODENAME =~ (xenial|bionic) ]]; then
-                    die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
-                fi
-                configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
-                configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
-                CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
-            else
-                if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
-                    die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
-                fi
-                configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
-                CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
-            fi
-
+            setup_packages_for_manila_on_ubuntu
         elif [[ $os_CODENAME =~ bionic ]]; then
             # Ceph Luminous is available in Ubuntu bionic natively, no need to set up
             # any additional repos
@@ -989,21 +1016,9 @@ function install_ceph {
         CEPH_PACKAGES="ceph"
 
         if is_ceph_enabled_for_service manila; then
-            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-                if [ $DISTRO_TYPE == 'centos' ]; then
-                    configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
-                    configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
-                fi
-                CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
-            else
-                if [ $DISTRO_TYPE == 'centos' ]; then
-                    configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
-                fi
-            fi
-        else
-            if [ $DISTRO_TYPE == 'centos' ]; then
-                configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
-            fi
+            setup_packages_for_manila_on_fedora_family
+        elif [ $DISTRO_TYPE == 'centos' ]; then
+            configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
