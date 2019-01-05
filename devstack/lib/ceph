@@ -928,6 +928,9 @@ function setup_packages_for_manila_on_ubuntu {
             configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
             configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
         fi
+        if python3_enabled; then
+            CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
+        fi
     else # Native driver
         if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
             die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
@@ -941,6 +944,9 @@ function setup_packages_for_manila_on_ubuntu {
             configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
         else # bionic repos are already there in the distro
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
+        fi
+        if python3_enabled; then
+            CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
         fi
     fi
 }

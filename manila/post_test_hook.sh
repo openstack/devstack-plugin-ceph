@@ -109,9 +109,6 @@ set +o errexit
 cd $BASE/new/tempest
 
 
-# Check whether tempest plugin was installed correctly.
-echo 'import pkg_resources; print list(pkg_resources.iter_entry_points("tempest.test_plugins"))' | python
-
 # Workaround for Tempest architectural changes
 # See bugs:
 # 1) https://bugs.launchpad.net/manila/+bug/1531049
@@ -140,4 +137,5 @@ elif [[ $MANILA_TEST_TYPE == 'scenario' ]]; then
 fi
 export MANILA_TEMPEST_CONCURRENCY=${MANILA_TEMPEST_CONCURRENCY:-12}
 
+sudo -H -u $USER tempest list-plugins
 sudo -H -u $USER tempest run -r $MANILA_TESTS --concurrency=$MANILA_TEMPEST_CONCURRENCY
