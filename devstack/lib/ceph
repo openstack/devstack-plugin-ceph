@@ -863,7 +863,7 @@ function install_ceph_remote {
 # - package_manager: apt or yum
 # - ceph_release: jewel, luminous, ...
 # - distro_type: centos, ubuntu
-# - distro_release: 7, xenial
+# - distro_release: 7, xenial, bionic
 # - repo_type: latest, stable (only latest is supported right now)
 function configure_repo_ceph {
     local package_manager="$1"
@@ -891,7 +891,7 @@ function configure_repo_ceph {
 # - package_manager: apt or yum
 # - flavor: ceph_luminous, ceph_master, ...
 # - distro_type: centos, ubuntu
-# - distro_release: 7, xenial
+# - distro_release: 7, xenial, bionic
 # - repo_type: latest (only latest is supported right now)
 function configure_repo_nfsganesha {
     local package_manager="$1"
@@ -914,20 +914,18 @@ function configure_repo_nfsganesha {
 }
 
 function setup_packages_for_manila_on_ubuntu {
+    # The 'apt' package manager needs the following package to access
+    # HTTPS enabled repositories such as the Ceph repos hosted by the
+    # shaman/chacra system.
+    install_package apt-transport-https
+
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         if ! [[ $os_CODENAME =~ (xenial|bionic) ]]; then
             die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
         fi
+        configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
+        configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
         CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
-        # bionic repos are all there already
-        if [[ $os_CODENAME =~ xenial ]]; then
-            # The 'apt' package manager needs the following package to access
-            # HTTPS enabled repositories such as the Ceph repos hosted by the
-            # shaman/chacra system.
-            install_package apt-transport-https
-            configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
-            configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
-        fi
         if python3_enabled; then
             CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
         fi
@@ -937,13 +935,10 @@ function setup_packages_for_manila_on_ubuntu {
         fi
         if [[ $os_CODENAME =~ (xenial|trusty) ]]; then
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
-	    # The 'apt' package manager needs the following package to access
-            # HTTPS enabled repositories such as the Ceph repos hosted by the
-            # shaman/chacra system.
-            install_package apt-transport-https
             configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
-        else # bionic repos are already there in the distro
+        else
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
+            configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
         fi
         if python3_enabled; then
             CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
