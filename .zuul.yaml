@@ -77,6 +77,10 @@
             voting: false
         - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
             voting: false
+        - manila-tempest-minimal-dsvm-cephfs-native:
+            voting: false
+        - manila-tempest-minimal-dsvm-cephfs-nfs:
+            voting: false
     gate:
       jobs:
         - openstack-tox-bashate
