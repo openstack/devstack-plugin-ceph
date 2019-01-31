@@ -933,7 +933,7 @@ function setup_packages_for_manila_on_ubuntu {
         if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
             die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
         fi
-        if [[ $os_CODENAME =~ (xenial|trusty) ]]; then
+        if [[ $os_CODENAME =~ (trusty) ]]; then
             CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
             configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
         else
