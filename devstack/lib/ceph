@@ -947,16 +947,11 @@ function setup_packages_for_manila_on_ubuntu {
 }
 
 function setup_packages_for_manila_on_fedora_family {
+    sudo yum -y remove centos-release-ceph-jewel
+    configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        if [ $DISTRO_TYPE == 'centos' ]; then
-            configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
-            configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
-        fi
+        configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
         CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
-    else
-        if [ $DISTRO_TYPE == 'centos' ]; then
-            configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
-        fi
     fi
 }
 
