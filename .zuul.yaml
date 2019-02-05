@@ -20,6 +20,7 @@
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+        ENABLE_VOLUME_MULTIATTACH: false
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
@@ -43,6 +44,7 @@
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+        ENABLE_VOLUME_MULTIATTACH: false
       devstack_plugins:
         devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
       tox_envlist: all
