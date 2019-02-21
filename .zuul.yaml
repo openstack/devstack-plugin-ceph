@@ -23,7 +23,7 @@
         ENABLE_VOLUME_MULTIATTACH: false
       tox_envlist: all
       tempest_test_regex: |
-              (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
+              (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
       tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["git.openstack.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
 
 - job:
@@ -49,7 +49,7 @@
         devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
       tox_envlist: all
       tempest_test_regex: |
-              (^tempest\.(api|scenario)|(^cinder_tempest_plugin))
+              (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
       tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["git.openstack.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
 
 - project-template:
