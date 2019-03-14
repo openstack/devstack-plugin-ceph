@@ -1,8 +1,8 @@
 - job:
-    name: devstack-plugin-ceph-tempest
+    name: devstack-plugin-ceph-tempest-base
     parent: tempest-full
     description: |
-      Integration tests that runs with the ceph devstack plugin.
+      Base integration tests that runs with the ceph devstack plugin.
       Former names for this job where:
         * legacy-tempest-dsvm-full-devstack-plugin-ceph
         * gate-tempest-dsvm-full-devstack-plugin-ceph-ubuntu-xenial
@@ -20,16 +20,42 @@
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+        ENABLE_VOLUME_MULTIATTACH: false
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
       tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["git.openstack.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
 
 - job:
-    name: devstack-plugin-ceph-tempest-py3
+    name: devstack-plugin-ceph-tempest
+    parent: devstack-plugin-ceph-tempest-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin.
+    branches:
+      - stable/ocata
+      - stable/pike
+      - stable/queens
+      - stable/rocky
+
+- job:
+    name: devstack-plugin-ceph-tempest
+    parent: devstack-plugin-ceph-tempest-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin.
+
+      This job enable the multiattach feature enable from stein on.
+
+    # This job runs with multiattach enable from stable/stein on.
+    branches: ^(?!stable/(ocata|pike|queens|rocky)).*$
+    vars:
+      devstack_localrc:
+        ENABLE_VOLUME_MULTIATTACH: true
+
+- job:
+    name: devstack-plugin-ceph-tempest-py3-base
     parent: tempest-full-py3
     description: |
-      Integration tests that runs with the ceph devstack plugin and py3.
+      Base integration tests that runs with the ceph devstack plugin and py3.
       Former names for this job where:
         * legacy-tempest-dsvm-py35-full-devstack-plugin-ceph
         * gate-tempest-dsvm-py35-full-devstack-plugin-ceph-ubuntu-xenial-nv
@@ -43,12 +69,38 @@
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
+        ENABLE_VOLUME_MULTIATTACH: false
       devstack_plugins:
         devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
       tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["git.openstack.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
+
+- job:
+    name: devstack-plugin-ceph-tempest-py3
+    parent: devstack-plugin-ceph-tempest-py3-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin and py3.
+    branches:
+      - stable/ocata
+      - stable/pike
+      - stable/queens
+      - stable/rocky
+
+- job:
+    name: devstack-plugin-ceph-tempest-py3
+    parent: devstack-plugin-ceph-tempest-py3-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin and py3.
+
+      This job enable the multiattach feature enable from stein on.
+
+    # This job runs with multiattach enable from stable/stein on.
+    branches: ^(?!stable/(ocata|pike|queens|rocky)).*$
+    vars:
+      devstack_localrc:
+        ENABLE_VOLUME_MULTIATTACH: true
 
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
