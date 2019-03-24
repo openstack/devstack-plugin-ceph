@@ -16,7 +16,7 @@
     timeout: 7200
     vars:
       devstack_plugins:
-        devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
+        devstack-plugin-ceph: https://git.openstack.org/openstack/devstack-plugin-ceph
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
@@ -71,7 +71,7 @@
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
         ENABLE_VOLUME_MULTIATTACH: false
       devstack_plugins:
-        devstack-plugin-ceph: git://git.openstack.org/openstack/devstack-plugin-ceph
+        devstack-plugin-ceph: https://git.openstack.org/openstack/devstack-plugin-ceph
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
