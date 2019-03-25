@@ -75,7 +75,7 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 * Tempest test failures when using RGW as swift endpoint
 * Tempest fails due to verify-tempest-config erroring out, when using RGW as swift endpoint
   * Patch sent @ https://review.openstack.org/#/c/264179/
-* Manila with CephFS - for Ubuntu, support only for trusty and xenial
+* Manila with CephFS - for Ubuntu, support only for Trusty Tahr (14.04 LTS) and beyond
 
 # TODOs
 
