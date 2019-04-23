@@ -31,7 +31,7 @@ This plugin also gets used to configure Ceph as the storage backend for the upst
 
 * To get started quickly, just enable the plugin in your ```local.conf```:
 
-    ```enable_plugin devstack-plugin-ceph https://git.openstack.org/openstack/devstack-plugin-ceph```
+    ```enable_plugin devstack-plugin-ceph https://opendev.org/openstack/devstack-plugin-ceph```
 
   Run ```stack.sh``` in your devstack tree and boom!  You're good to go.
 
