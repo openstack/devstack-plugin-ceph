@@ -51,10 +51,8 @@ echo "DEVSTACK_GATE_TEMPEST_ALLOW_TENANT_ISOLATION=1" >> $localconf
 echo "API_RATE_LIMIT=False" >> $localconf
 echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localconf
 
-
-# NOTE(rraja): Enable when need arises, for example, when the CI does scenario
-# testing.
-echo "MANILA_SERVICE_IMAGE_ENABLED=False" >> $localconf
+echo "MANILA_SERVICE_IMAGE_ENABLED=True" >> $localconf
+echo "MANILA_USE_SERVICE_INSTANCE_PASSWORD=True" >> $localconf
 
 # Enable isolated metadata in Neutron because Tempest creates isolated
 # networks and created VMs in scenario tests don't have access to Nova Metadata
