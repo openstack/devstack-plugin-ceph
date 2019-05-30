@@ -97,12 +97,13 @@ elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
     if is_service_enabled tempest; then
         iniset $TEMPEST_CONFIG compute-feature-enabled swap_volume False
 
-        # This is only being set because the tempest test
-        # test_shelve_unshelve_server fails with an
-        # "After unshelve, shelved image is not deleted"
-        # failure.  Re-enable this feature when that test is fixed.
-        # https://review.openstack.org/#/c/471352/
-        iniset $TEMPEST_CONFIG compute-feature-enabled shelve False
+        # Only enable shelve testing for branches which have the fix for
+        # nova bug 1653953.
+        if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike|queens|rocky|stein) ]]; then
+            iniset $TEMPEST_CONFIG compute-feature-enabled shelve False
+        else
+            iniset $TEMPEST_CONFIG compute-feature-enabled shelve True
+        fi
     fi
 fi
 
