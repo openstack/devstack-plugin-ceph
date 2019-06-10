@@ -121,6 +121,21 @@ iniset $TEMPEST_CONFIG share run_snapshot_tests $RUN_MANILA_SNAPSHOT_TESTS
 RUN_MANILA_CG_TESTS=${RUN_MANILA_CG_TESTS:-False}
 iniset $TEMPEST_CONFIG share run_consistency_group_tests $RUN_MANILA_CG_TESTS
 
+# NOTE(gouthamr): extra rules are needed to allow VMs to mount storage from
+# the host.
+TCP_PORTS=(2049 111 32803 892 875 662)
+UDP_PORTS=(111 32769 892 875 662)
+for ipcmd in iptables ip6tables; do
+    sudo $ipcmd -N manila-nfs
+    sudo $ipcmd -I INPUT 1 -j manila-nfs
+    for port in ${TCP_PORTS[*]}; do
+        sudo $ipcmd -A manila-nfs -m tcp -p tcp --dport $port -j ACCEPT
+    done
+    for port in ${UDP_PORTS[*]}; do
+        sudo $ipcmd -A manila-nfs -m udp -p udp --dport $port -j ACCEPT
+    done
+done
+
 # Let us control if we die or not.
 set +o errexit
 cd $BASE/new/tempest
@@ -146,13 +161,17 @@ iniset $TEMPEST_CONFIG validation ip_version_for_ssh 4
 iniset $TEMPEST_CONFIG validation ssh_timeout $BUILD_TIMEOUT
 iniset $TEMPEST_CONFIG validation network_for_ssh ${PRIVATE_NETWORK_NAME:-"private"}
 
+_DEFAULT_TEST_CONCURRENCY=8
 echo "Running tempest manila test suites"
 if [[ $MANILA_TEST_TYPE == 'api' ]]; then
     export MANILA_TESTS='manila_tempest_tests.tests.api'
+    _DEFAULT_TEST_CONCURRENCY=12
 elif [[ $MANILA_TEST_TYPE == 'scenario' ]]; then
     export MANILA_TESTS='manila_tempest_tests.tests.scenario'
+else
+    export MANILA_TESTS='manila_tempest_tests.tests'
 fi
-export MANILA_TEMPEST_CONCURRENCY=${MANILA_TEMPEST_CONCURRENCY:-12}
+export MANILA_TEMPEST_CONCURRENCY=${MANILA_TEMPEST_CONCURRENCY:-$_DEFAULT_TEST_CONCURRENCY}
 
 sudo -H -u $USER tempest list-plugins
 sudo -H -u $USER tempest run -r $MANILA_TESTS --concurrency=$MANILA_TEMPEST_CONCURRENCY
