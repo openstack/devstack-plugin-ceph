@@ -125,10 +125,6 @@
     check:
       jobs:
         - openstack-tox-bashate
-        - manila-tempest-minimal-dsvm-cephfs-native-centos-7:
-            voting: false
-        - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
-            voting: false
         - manila-tempest-minimal-dsvm-cephfs-native:
             voting: false
         - manila-tempest-minimal-dsvm-cephfs-nfs:
@@ -138,6 +134,8 @@
         - openstack-tox-bashate
     experimental:
       jobs:
-        - manila-tempest-minimal-py35-dsvm-cephfs-native-centos-7
-        - manila-tempest-minimal-py35-dsvm-cephfs-nfs-centos-7
+        - manila-tempest-minimal-dsvm-cephfs-native-centos-7:
+            voting: false
+        - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
+            voting: false
 
