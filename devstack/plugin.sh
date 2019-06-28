@@ -99,7 +99,7 @@ elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
 
         # Only enable shelve testing for branches which have the fix for
         # nova bug 1653953.
-        if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike|queens|rocky|stein) ]]; then
+        if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike|queens|rocky) ]]; then
             iniset $TEMPEST_CONFIG compute-feature-enabled shelve False
         else
             iniset $TEMPEST_CONFIG compute-feature-enabled shelve True
