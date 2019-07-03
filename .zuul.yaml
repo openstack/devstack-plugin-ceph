@@ -21,6 +21,7 @@
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
         ENABLE_VOLUME_MULTIATTACH: false
+        TEMPEST_RUN_VALIDATION: false
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
@@ -70,6 +71,7 @@
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
         ENABLE_VOLUME_MULTIATTACH: false
+        TEMPEST_RUN_VALIDATION: false
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       tox_envlist: all
