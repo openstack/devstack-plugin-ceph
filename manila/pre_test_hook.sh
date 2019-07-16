@@ -47,6 +47,8 @@ elif [[ $MANILA_BACKEND_TYPE == 'singlebackend' ]]; then
     echo "MANILA_MULTI_BACKEND=False" >> $localconf
 fi
 
+echo "SHARE_DRIVER=manila.share.drivers.cephfs.driver.CephFSDriver" >> $localconf
+
 echo "DEVSTACK_GATE_TEMPEST_ALLOW_TENANT_ISOLATION=1" >> $localconf
 echo "API_RATE_LIMIT=False" >> $localconf
 echo "MANILA_USE_DOWNGRADE_MIGRATIONS=True" >> $localconf
@@ -58,6 +60,19 @@ echo "MANILA_USE_SERVICE_INSTANCE_PASSWORD=True" >> $localconf
 # networks and created VMs in scenario tests don't have access to Nova Metadata
 # service. This leads to unavailability of created VMs in scenario tests.
 echo 'ENABLE_ISOLATED_METADATA=True' >> $localconf
+
+if [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
+    export MANILA_SETUP_IPV6=True
+fi
+if [[ "$MANILA_SETUP_IPV6" == True ]]; then
+    # When setting up proper IPv6 networks, we should do it ourselves so we can
+    # use Neutron Dynamic Routing plugin with address scopes instead of the
+    # regular Neutron DevStack configuration.
+    echo "MANILA_SETUP_IPV6=True" >> $localconf
+    echo "MANILA_RESTORE_IPV6_DEFAULT_ROUTE=False" >> $localconf
+    echo "NEUTRON_CREATE_INITIAL_NETWORKS=False" >> $localconf
+    echo "IP_VERSION=4+6" >> $localconf
+fi
 
 # Go to Tempest dir and checkout stable commit to avoid possible
 # incompatibilities for plugin stored in Manila repo.

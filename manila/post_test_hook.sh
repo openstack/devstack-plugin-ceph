@@ -60,10 +60,12 @@ if [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
     # CephFSNative driver does not yet support manage and unmanage operations of shares.
     RUN_MANILA_MANAGE_TESTS=${RUN_MANILA_MANAGE_TESTS:-False}
     iniset $TEMPEST_CONFIG share run_manage_unmanage_tests $RUN_MANILA_MANAGE_TESTS
+    RUN_MANILA_IPV6_TESTS=False
 elif [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
     iniset $TEMPEST_CONFIG share enable_protocols nfs
     iniset $TEMPEST_CONFIG share capability_storage_protocol NFS
     iniset $TEMPEST_CONFIG share enable_ip_rules_for_protocols nfs
+    RUN_MANILA_IPV6_TESTS=True
 fi
 
 # If testing a stable branch, we need to ensure we're testing with supported
@@ -135,6 +137,21 @@ for ipcmd in iptables ip6tables; do
         sudo $ipcmd -A manila-nfs -m udp -p udp --dport $port -j ACCEPT
     done
 done
+
+source $BASE/new/devstack/openrc admin admin
+public_net_id=$(openstack network list --name $PUBLIC_NETWORK_NAME -f value -c ID )
+iniset $TEMPEST_CONFIG network public_network_id $public_net_id
+
+if [ $(trueorfalse False MANILA_SETUP_IPV6) == True ]; then
+    # Now that all plugins are loaded, setup BGP here
+    public_gateway_ipv6=$(openstack subnet show ipv6-public-subnet -c gateway_ip -f value)
+    neutron bgp-speaker-create --ip-version 6 --local-as 100 bgpspeaker
+    neutron bgp-speaker-network-add bgpspeaker $PUBLIC_NETWORK_NAME
+    neutron bgp-peer-create --peer-ip $public_gateway_ipv6 --remote-as 200 bgppeer
+    neutron bgp-speaker-peer-add bgpspeaker bgppeer
+fi
+
+iniset $TEMPEST_CONFIG share run_ipv6_tests $RUN_MANILA_IPV6_TESTS
 
 # Let us control if we die or not.
 set +o errexit
