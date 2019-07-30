@@ -405,12 +405,11 @@ function initial_configure_ceph {
 
     # populate ceph directory
     sudo mkdir -p \
-        ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,mds,mon,osd,tmp,radosgw}
+        ${CEPH_DATA_DIR}/{bootstrap-mds,bootstrap-osd,bootstrap-mgr,bootstrap-rgw,mgr,rgw,mds,mon,osd,tmp,radosgw}
 }
 # configure_ceph() - Set config files, create data dirs, etc
 function configure_ceph {
     local count=0
-
 
     RUN_AS=$(_run_as_ceph_or_root)
     echo "ceph daemons will run as $RUN_AS"
@@ -419,8 +418,17 @@ function configure_ceph {
 
     # create ceph monitor initial key and directory
     sudo ceph-authtool ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname) \
-        --create-keyring --name=mon. --add-key=$(ceph-authtool \
-        --gen-print-key) --cap mon 'allow *'
+    --create-keyring --name=mon. --add-key=$(ceph-authtool --gen-print-key) \
+    --cap mon 'allow *'
+
+    # gen admin keyring, gen client.admin user and add user to keyring
+    sudo ceph-authtool ${CEPH_CONF_DIR}/ceph.client.admin.keyring \
+    --create-keyring --gen-key -n client.admin --cap mon 'allow *' \
+    --cap osd 'allow *' --cap mds 'allow *' --cap mgr 'allow *'
+
+    # add gen keys to ceph.mon.keyring
+    sudo ceph-authtool ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname) \
+    --import-keyring ${CEPH_CONF_DIR}/ceph.client.admin.keyring
 
     sudo mkdir -p ${CEPH_DATA_DIR}/mon/ceph-$(hostname)
 
@@ -460,21 +468,12 @@ function configure_ceph {
 
     local ceph_version
     ceph_version=$(_get_ceph_version mon)
-    if [[ $(echo $ceph_version '>=' 11.1 | bc -l) == 1 ]] ; then
-        sudo ceph-create-keys --cluster ceph --id $(hostname)
+
+    if [[ $(echo $ceph_version '>=' 14.0 | bc -l) == 1 ]] ; then
+        for key in bootstrap-{mds,osd,rgw}; do
+            sudo ceph auth get client.$key -o ${CEPH_DATA_DIR}/$key/ceph.keyring
+        done
     fi
-
-    # wait for the admin key to come up
-    # otherwise we will not be able to do the actions below
-    until [ -f ${CEPH_CONF_DIR}/ceph.client.admin.keyring ]; do
-        echo_summary "Waiting for the Ceph admin key to be ready..."
-
-        count=$(($count + 1))
-        if [ $count -eq 3 ]; then
-            die $LINENO "Maximum of 3 retries reached"
-        fi
-        sleep 5
-    done
 
     if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
         sudo mkdir -p ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}
@@ -506,19 +505,18 @@ function configure_ceph {
     # create the OSD(s)
     for rep in ${CEPH_REPLICAS_SEQ}; do
         OSD_ID=$(sudo ceph -c ${CEPH_CONF_FILE} osd create)
-        if [[ $RUN_AS == 'ceph' ]] ; then
-            sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-            sudo ceph-osd -c ${CEPH_CONF_FILE} --setuser ceph --setgroup ceph -i ${OSD_ID} --mkfs
-        else
-            sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-            sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
-        fi
+        sudo mkdir -p ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create osd.${OSD_ID} \
             mon 'allow profile osd ' osd 'allow *' | \
             sudo tee ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
         if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
             sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
+        fi
+        if [[ $RUN_AS == 'ceph' ]] ; then
+            sudo ceph-osd -c ${CEPH_CONF_FILE} --setuser ceph --setgroup ceph -i ${OSD_ID} --mkfs
+        else
+            sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
         fi
         # ceph's init script is parsing ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/
         # and looking for a file 'upstart' or 'sysinitv'
