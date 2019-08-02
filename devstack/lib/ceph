@@ -809,7 +809,7 @@ function configure_ceph_manila {
     sudo chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.client.${MANILA_CEPH_USER}.keyring
     # Enable snapshots in CephFS.
-    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} mds set allow_new_snaps true \
+    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} fs set ${CEPHFS_FILESYSTEM} allow_new_snaps true \
         --yes-i-really-mean-it
 
     # Make manila's libcephfs client a root user.
