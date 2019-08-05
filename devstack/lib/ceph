@@ -1174,7 +1174,12 @@ function install_ceph {
         if is_ceph_enabled_for_service manila; then
             setup_packages_for_manila_on_fedora_family
         elif [ $DISTRO_TYPE == 'centos' ]; then
-            configure_repo_ceph "yum" "jewel" "${DISTRO_TYPE}" "${RELEASE}"
+            if [[ ${CEPH_RELEASE} > 'jewel' ]]; then
+                repo=${CEPH_RELEASE}
+            else
+                repo="jewel"
+            fi
+            configure_repo_ceph "yum" $repo "${DISTRO_TYPE}" "${RELEASE}"
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
