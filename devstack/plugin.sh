@@ -24,7 +24,6 @@ elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
             # OpenStack components.
             # Ceph OSD must start here otherwise we can't upload any images.
             echo_summary "Initializing Ceph"
-            init_ceph
             start_ceph
         fi
     else

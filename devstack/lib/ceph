@@ -13,7 +13,6 @@
 #
 # - install_ceph
 # - configure_ceph
-# - init_ceph
 # - start_ceph
 # - stop_ceph
 # - cleanup_ceph
@@ -27,7 +26,13 @@ set +o xtrace
 # Defaults
 # --------
 
-CEPH_RELEASE=${CEPH_RELEASE:-hammer}
+CEPH_RELEASE=${CEPH_RELEASE:-nautilus}
+
+CEPH_RELEASE_STABLE=${CEPH_RELEASE_STABLE:-luminous}
+
+GANESHA_RELEASE=${GANESHA_RELEASE:-ceph_nautilus}
+
+GANESHA_RELEASE_STABLE=${GANESHA_RELEASE_STABLE:-ceph_luminous}
 
 # Deploy a Ceph demo container instead of a non-containerized version
 CEPH_CONTAINERIZED=$(trueorfalse False CEPH_CONTAINERIZED)
@@ -138,27 +143,11 @@ if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike) ]]; then
     ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
 fi
 
-# OpenStack CI test instances will have a set of opt in package mirrors in
-# /etc/apt/sources.list.available.d/ which will include the ceph package
-# mirror. If this file exists we can link to it in /etc/apt/sources.list.d/
-# to enable it.
-APT_REPOSITORY_FILE="/etc/apt/sources.list.available.d/ceph-deb-hammer.list"
-# If the package mirror file doesn't exist, fetch from here
-APT_REPOSITORY_ENTRY="\
-    deb http://download.ceph.com/debian-${CEPH_RELEASE} $(lsb_release -sc) main"
-
 # Set INIT_SYSTEM to upstart, systemd, or init.  In our domain it should be
 # safe to assume that if the init system is not upstart or systemd that it
 # is sysvinit rather than other theoretical possibilities like busybox.
 INIT_SYSTEM=$(init --version 2>/dev/null | grep -qs upstart && echo upstart \
     || cat /proc/1/comm)
-
-# Set RUN_AS to 'root' or 'ceph'.  Starting with Infernalis, ceph daemons
-# run as the ceph user rather than as the root user.  We set this variable
-# properly later, after ceph-common package is installed.
-#
-RUN_AS='unknown'
-
 
 # Functions
 # ------------
@@ -249,20 +238,6 @@ function _get_ceph_version {
     echo $ceph_version_str
 }
 
-# _run_as_ceph_or_root() - Starting with Infernalis, ceph daemons run as the ceph user
-# rather than as root.  Check the version and return 'root' or 'ceph'.
-#
-# This function presupposes that ceph-common package has been installed first.
-function _run_as_ceph_or_root {
-    local ceph_version
-    ceph_version=$(_get_ceph_version cli)
-    if vercmp "$ceph_version" ">=" "9.2"; then
-        echo ceph
-    else
-        echo root
-    fi
-}
-
 # import_libvirt_secret_ceph() - Imports Cinder user key into libvirt
 # so it can connect to the Ceph cluster while attaching a Cinder block device
 function import_libvirt_secret_ceph {
@@ -299,10 +274,11 @@ function check_os_support_ceph {
         return
     fi
 
-    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|jessie|sid|rhel7) ]]; then
+    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|f31|f32) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Luminous release. \
-            Please use Ubuntu Bionic or Fedora 29 (and higher)"
+            Please use Ubuntu Xenial, Ubuntu Bionic, Ubuntu Focal,
+            Fedora 31 or Fedora 32"
         if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
             die $LINENO "If you wish to install Ceph on this distribution \
                 anyway run with FORCE_CEPH_INSTALL=yes, \
@@ -380,14 +356,13 @@ function cleanup_ceph_embedded {
     # purge ceph config file and keys
     sudo rm -rf ${CEPH_CONF_DIR}/*
 
-    # purge repo
-    sudo apt-add-repository --remove "$APT_REPOSITORY_ENTRY"
 }
 
 function cleanup_ceph_general {
     _undefine_virsh_secret
     if is_ceph_enabled_for_service manila && [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         cleanup_nfs_ganesha
+        cleanup_repo_nfsganesha
     fi
     if is_ceph_enabled_for_service manila; then
         sudo ceph -c ${CEPH_CONF_FILE} fs rm $CEPHFS_FILESYSTEM \
@@ -398,6 +373,7 @@ function cleanup_ceph_general {
             --yes-i-really-really-mean-it > /dev/null 2>&1
         sudo ceph -c ${CEPH_CONF_FILE} auth del client.$MANILA_CEPH_USER > /dev/null 2>&1
     fi
+    cleanup_repo_ceph
 }
 
 function cleanup_containerized_ceph {
@@ -417,9 +393,6 @@ function initial_configure_ceph {
 # configure_ceph() - Set config files, create data dirs, etc
 function configure_ceph {
     local count=0
-
-    RUN_AS=$(_run_as_ceph_or_root)
-    echo "ceph daemons will run as $RUN_AS"
 
     initial_configure_ceph
 
@@ -451,19 +424,17 @@ function configure_ceph {
     iniset -sudo ${CEPH_CONF_FILE} global "osd journal size" "100"
     iniset -sudo ${CEPH_CONF_FILE} global "osd pool default size" "${CEPH_REPLICAS}"
     iniset -sudo ${CEPH_CONF_FILE} global "rbd default features" "${CEPH_RBD_DEFAULT_FEATURES}"
+    iniset -sudo ${CEPH_CONF_FILE} client "debug_client" "10"
+    iniset -sudo ${CEPH_CONF_FILE} client "debug_ms" "1"
 
     # bootstrap the ceph monitor
     sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
          --keyring ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname)
 
-    if [[ $RUN_AS == 'ceph' ]] ; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
-    fi
+    sudo chown -R ceph. ${CEPH_DATA_DIR}
 
     sudo systemctl enable ceph-mon@$(hostname)
     sudo systemctl start ceph-mon@$(hostname)
-    # TODO(frickler): Find a better way to make sure that ceph-mon has started
-    sleep 5
 
     local ceph_version
     ceph_version=$(_get_ceph_version mon)
@@ -474,13 +445,11 @@ function configure_ceph {
         done
     fi
 
-    if vercmp "$ceph_version" ">=" "12.1"; then
-        sudo mkdir -p ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}
-        sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mgr.${MGR_ID} \
-            mon 'allow profile mgr' mds 'allow *' osd 'allow *' \
-            -o ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}/keyring
-        sudo chown -R ceph. ${CEPH_DATA_DIR}/mgr
-    fi
+    sudo mkdir -p ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}
+    sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mgr.${MGR_ID} \
+        mon 'allow profile mgr' mds 'allow *' osd 'allow *' \
+        -o ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}/keyring
+    sudo chown -R ceph. ${CEPH_DATA_DIR}/mgr
 
     # create a simple rule to take OSDs instead of hosts with CRUSH
     # then apply this rule to the default pool
@@ -508,15 +477,10 @@ function configure_ceph {
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create osd.${OSD_ID} \
             mon 'allow profile osd ' osd 'allow *' | \
             sudo tee ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
-        if [[ $RUN_AS == 'ceph' ]] ; then
-            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
-            sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
-        fi
-        if [[ $RUN_AS == 'ceph' ]] ; then
-            sudo ceph-osd -c ${CEPH_CONF_FILE} --setuser ceph --setgroup ceph -i ${OSD_ID} --mkfs
-        else
-            sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
-        fi
+        sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}
+        sudo chown ceph. ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/keyring
+        sudo ceph-osd -c ${CEPH_CONF_FILE} --setuser ceph --setgroup ceph -i ${OSD_ID} --mkfs
+        sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
 
         sudo systemctl enable ceph-osd@${OSD_ID}
     done
@@ -524,15 +488,11 @@ function configure_ceph {
     if is_ceph_enabled_for_service manila; then
         # create a MDS
         sudo mkdir -p ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
-        if [[ $RUN_AS == 'ceph' ]] ; then
-            sudo chown ceph. ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
-        fi
+        sudo chown ceph. ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mds.${MDS_ID} \
             mon 'allow profile mds ' osd 'allow rw' mds 'allow' \
             -o ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
-        if [[ $RUN_AS == 'ceph' ]] ; then
-            sudo chown ceph. /var/lib/ceph/mds/ceph-${MDS_ID}/keyring
-        fi
+        sudo chown ceph. /var/lib/ceph/mds/ceph-${MDS_ID}/keyring
 
         sudo systemctl enable ceph-mds@${MDS_ID}
     fi
@@ -593,10 +553,7 @@ function _configure_ceph_rgw {
 
     sudo systemctl enable ceph-radosgw@rgw.$(hostname)
 
-    if [[ $RUN_AS == 'ceph' ]] ; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
-    fi
-
+    sudo chown -R ceph. ${CEPH_DATA_DIR}
 }
 
 function _configure_ceph_iscsi_gateway {
@@ -903,24 +860,6 @@ function configure_ceph_cinder {
         ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
 }
 
-# init_ceph() - Initialize databases, etc.
-function init_ceph {
-    # clean up from previous (possibly aborted) runs
-    # make sure to kill all ceph processes first
-    sudo pkill -f ceph-mon || true
-    sudo pkill -f ceph-osd || true
-    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-        sudo pkill -f radosgw || true
-    fi
-    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-        sudo systemctl stop rbd-target-api
-        sudo systemctl stop rbd-target-gw
-    fi
-    if is_ceph_enabled_for_service manila; then
-        sudo pkill -f ceph-mds || true
-    fi
-}
-
 # install_ceph() - Collect source and prepare
 function install_ceph_remote {
     install_package ceph-common
@@ -937,7 +876,7 @@ function install_ceph_remote {
 # Usage: configure_repo_ceph <package_manager> <ceph_release> <distro_type> \
 #                            <distro_release> [<repo_type>]
 # - package_manager: apt or yum
-# - ceph_release: jewel, luminous, ...
+# - ceph_release: luminous, ...
 # - distro_type: centos, ubuntu
 # - distro_release: 7, xenial, bionic
 # - repo_type: latest, stable (only latest is supported right now)
@@ -956,8 +895,20 @@ function configure_repo_ceph {
     fi
 
     if [ -n "${repo_file_name}" ]; then
-        curl -L https://shaman.ceph.com/api/repos/ceph/${ceph_release}/latest/${distro_type}/${distro_release}/repo | \
-            sudo tee ${repo_file_name}
+        repo=$(curl -L "https://shaman.ceph.com/api/search/?project=ceph&distros=${distro_type}/${distro_release}&ref=${ceph_release}&sha1=${repo_type}" | \
+            jq '.[0] | .chacra_url' | tr -d '"' | awk '{print $1"repo"}')
+        curl -L $repo | sudo tee ${repo_file_name}
+        sudo ${package_manager} -y update
+    fi
+}
+
+# cleanup_repo_ceph() - Remove Ceph repositories
+# Usage: cleanup_repo_ceph
+function cleanup_repo_ceph {
+    if is_ubuntu; then
+        sudo rm -rf /etc/apt/sources.list.d/ceph.list
+    elif is_fedora; then
+        sudo rm -rf /etc/yum.repos.d/ext-ceph.repo
     fi
 }
 
@@ -984,8 +935,20 @@ function configure_repo_nfsganesha {
     fi
 
     if [ -n "${repo_file_name}" ]; then
-        curl -L https://shaman.ceph.com/api/repos/nfs-ganesha/next/latest/${distro_type}/${distro_release}/flavors/${ganesha_flavor}/repo | \
-            sudo tee ${repo_file_name}
+        repo=$(curl -L "https://shaman.ceph.com/api/search/?project=nfs-ganesha-stable&distros=${distro_type}/${distro_release}&flavor=${ganesha_flavor}&sha1=${repo_type}" | \
+            jq '.[0] | .chacra_url' | tr -d '"' | awk '{print $1"repo"}')
+        curl -L $repo | sudo tee ${repo_file_name}
+        sudo ${package_manager} -y update
+    fi
+}
+
+# cleanup_repo_nfsganesha() - Remove NFS Ganesha repositories
+# Usage: cleanup_repo_nfsganesha
+function cleanup_repo_nfsganesha {
+    if is_ubuntu; then
+        sudo rm -rf /etc/apt/sources.list.d/ext-nfs-ganesha.list
+    elif is_fedora; then
+        sudo rm -rf /etc/yum.repos.d/ext-nfs-ganesha.repo
     fi
 }
 
@@ -1033,78 +996,55 @@ function setup_packages_for_manila_on_ubuntu {
     # shaman/chacra system.
     install_package apt-transport-https
 
+    CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
+
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        if ! [[ $os_CODENAME =~ (xenial|bionic|focal) ]]; then
-            die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
-        fi
-        configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
-        configure_repo_nfsganesha "apt" "ceph_luminous" "ubuntu" "$os_CODENAME"
-        CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2 nfs-ganesha nfs-ganesha-ceph"
-        if python3_enabled; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
-        fi
-    else # Native driver
-        if ! [[ $os_CODENAME =~ (focal|bionic|xenial|trusty) ]]; then
-            die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
-        fi
-        if [[ $os_CODENAME =~ (trusty) ]]; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs1"
-            configure_repo_ceph "apt" "jewel" "ubuntu" "$os_CODENAME"
+        if [[ $os_CODENAME =~ (xenial) ]]; then
+            configure_repo_nfsganesha "apt" "$GANESHA_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
         else
-            CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
-            configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
+            configure_repo_nfsganesha "apt" "$GANESHA_RELEASE" "ubuntu" "$os_CODENAME"
         fi
-        if python3_enabled; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
-        fi
+        CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
+    fi
+
+    if python3_enabled; then
+        CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
     fi
 }
 
 function setup_packages_for_manila_on_fedora_family {
-    sudo yum -y remove centos-release-ceph-jewel
-    configure_repo_ceph "yum" "luminous" "${DISTRO_TYPE}" "${RELEASE}"
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        configure_repo_nfsganesha "yum" "ceph_luminous" "${DISTRO_TYPE}" "${RELEASE}"
+        # NOTE(vkmc) shaman currently does not build for Fedora
+        # we need to stick to CentOS 7 packages
+        configure_repo_nfsganesha "yum" "$CEPH_RELEASE" "centos" "7"
         CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
     fi
 }
 
 function install_ceph {
+    install_package jq
+
     if is_ubuntu; then
+        if ! [[ $os_CODENAME =~ (focal|xenial|bionic) ]]; then
+            die $LINENO "Supported for Ubuntu Xenial, Bionic or Focal. Not supported for other releases."
+        fi
+
+        # NOTE(vkmc) Dependencies for setting up repos
+        install_package software-properties-common
+
+        if [[ $os_CODENAME =~ (xenial) ]]; then
+            configure_repo_ceph "apt" "$CEPH_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
+        else
+            configure_repo_ceph "apt" "$CEPH_RELEASE" "ubuntu" "$os_CODENAME"
+        fi
+
         CEPH_PACKAGES="ceph libnss3-tools"
         if python3_enabled; then
-            CEPH_PACKAGES="$CEPH_PACKAGES python3-rados python3-rbd"
+            CEPH_PACKAGES="${CEPH_PACKAGES} python3-rados python3-rbd"
         fi
-        install_package software-properties-common
 
         if is_ceph_enabled_for_service manila; then
             setup_packages_for_manila_on_ubuntu
-        elif [[ $os_CODENAME =~ (bionic|focal) ]]; then
-            # Ceph Luminous is available in Ubuntu bionic or newer natively, no need to set up
-            # any additional repos
-            true
-        elif [ -f "$APT_REPOSITORY_FILE" ]; then
-            # Opt into Openstack CI provided package repo mirror
-            if [ -f "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)" ] ; then
-                # This case can be removed once the CI images are updated to
-                # remove this file.
-                sudo rm "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)"
-            fi
-            sudo ln -s $APT_REPOSITORY_FILE "/etc/apt/sources.list.d/$(basename $APT_REPOSITORY_FILE)"
-        else
-
-            # the gate requires that we use mirrored package repositories for
-            # reliability, so the most recent ceph packages are mirrored and
-            # configured in $APT_REPOSITORY_FILE.  The gate environment will
-            # ensure that this file is present, so if it doesn't exist we're
-            # likely not running in a gate environment and are free to fetch
-            # packages from ceph.com.
-
-            sudo apt-add-repository "$APT_REPOSITORY_ENTRY"
-
-            # install the release key for ceph.com package authentication
-            wget -q -O- 'https://download.ceph.com/keys/release.asc' \
-                | sudo apt-key add -
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
@@ -1126,29 +1066,20 @@ function install_ceph {
             CEPH_PACKAGES="${CEPH_PACKAGES} libgoogle-perftools4 libgoogle-perftools-dev"
         fi
 
-        # Update package repo.
-        REPOS_UPDATED=False
         install_package ${CEPH_PACKAGES}
     elif is_fedora; then
-        RELEASE=$(echo $os_RELEASE | awk -F . '{print $1}')
-        if [ "$os_VENDOR" != "Fedora" ] && [ $RELEASE != 7 ]; then
-            # Fedora proper includes the packages already in the distribution,
-            # while CentOS/RHEL/etc needs to be at version 7.
-            die $LINENO "Need Fedora or CentOS/RHEL/etc 7"
+        if ! [[ $os_VENDOR =~ Fedora ]] && [[ $os_RELEASE =~ (31|32) ]]; then
+            die $LINENO "Supported for Fedora 31 and 32. Not supported for other releases."
         fi
-        DISTRO_TYPE=${os_VENDOR,,}
+
+        # NOTE(vkmc) shaman currently does not build for Fedora
+        # we need to stick to CentOS 7 packages
+        configure_repo_ceph "yum" "$CEPH_RELEASE" "centos" "7"
 
         CEPH_PACKAGES="ceph"
 
         if is_ceph_enabled_for_service manila; then
             setup_packages_for_manila_on_fedora_family
-        elif [ $DISTRO_TYPE == 'centos' ]; then
-            if [[ ${CEPH_RELEASE} > 'jewel' ]]; then
-                repo=${CEPH_RELEASE}
-            else
-                repo="jewel"
-            fi
-            configure_repo_ceph "yum" $repo "${DISTRO_TYPE}" "${RELEASE}"
         fi
 
         if [ "$ENABLE_CEPH_RGW" = "True" ]; then
@@ -1174,20 +1105,17 @@ function install_ceph {
 
 # start_ceph() - Start running processes, including screen
 function start_ceph {
-    if [[ $RUN_AS == 'ceph' ]] ; then
-        sudo chown -R ceph. ${CEPH_DATA_DIR}
-    fi
+    sudo chown -R ceph. ${CEPH_DATA_DIR}
 
     sudo systemctl start ceph-mon@$(hostname)
     local ceph_version
     ceph_version=$(_get_ceph_version mon)
-    if vercmp "$ceph_version" ">=" "12.1"; then
-        sudo systemctl start ceph-mgr@${MGR_ID}
-        # use `tell mgr` as the mgr might not have been activated
-        # yet to register the python module commands.
-        if ! sudo ceph -c ${CEPH_CONF_FILE} tell mgr restful create-self-signed-cert; then
-            echo MGR Restful is not working, perhaps the package is not installed?
-        fi
+
+    sudo systemctl start ceph-mgr@${MGR_ID}
+    # use `tell mgr` as the mgr might not have been activated
+    # yet to register the python module commands.
+    if ! sudo ceph -c ${CEPH_CONF_FILE} tell mgr restful create-self-signed-cert; then
+        echo MGR Restful is not working, perhaps the package is not installed?
     fi
     for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
         sudo systemctl start ceph-osd@$id
@@ -1203,30 +1131,44 @@ function start_ceph {
 
 # stop_ceph() - Stop running processes (non-screen)
 function stop_ceph {
+
     if [ "$ENABLE_CEPH_RGW" = "True" ]; then
         sudo systemctl stop ceph-radosgw@rgw.$(hostname)
+        sudo systemctl disable ceph-radosgw@rgw.$(hostname)
     fi
     if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
         stop_ceph_iscsi
     fi
     if is_ceph_enabled_for_service manila; then
-        sudo systemctl stop ceph-mds@${MDS_ID}
         if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
             sudo systemctl stop nfs-ganesha
+            sudo systemctl disable nfs-ganesha
         fi
+        sudo systemctl stop ceph-mds@${MDS_ID}
+        sudo systemctl disable ceph-mds@${MDS_ID}
     fi
+
     # if mon is dead or unhealthy we won't get the list
     # of osds but should continue anyways.
     ids=$(sudo ceph -c ${CEPH_CONF_FILE} osd ls 2>/dev/null --connect-timeout 5)
     for id in $ids; do
         sudo systemctl stop ceph-osd@$id
+        sudo systemctl disable ceph-osd@$id
     done
-    local ceph_version
-    ceph_version=$(_get_ceph_version cli)
-    if vercmp "$ceph_version" ">=" "12.1"; then
-        sudo systemctl stop ceph-mgr@${MGR_ID}
-    fi
+
+    sudo systemctl stop ceph-mgr@${MGR_ID}
+    sudo systemctl disable ceph-mgr@${MGR_ID}
+
+    # In nautilus we have the new ceph-crash service for monitoring
+    # Try to stop it. If there is no service, stop/disable do nothing
+    sudo systemctl stop ceph-crash
+    sudo systemctl disable ceph-crash
+
     sudo systemctl stop ceph-mon@$(hostname)
+    sudo systemctl disable ceph-mon@$(hostname)
+
+    # NOTE(vkmc) Cleanup any leftover unit files
+    sudo rm -f /etc/systemd/system/ceph*
 }
 
 # Restore xtrace
