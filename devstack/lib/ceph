@@ -962,6 +962,11 @@ function init_ceph {
 # install_ceph() - Collect source and prepare
 function install_ceph_remote {
     install_package ceph-common
+    # ceph-common in Bionic (18.04) installs only the python2 variants of
+    # required packages, meaning we need to install the python3 variants
+    # manually. Hopefully this won't be necessary in Focal (20.04)
+    # https://packages.ubuntu.com/bionic/ceph-common
+    install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
 }
 
 # configure_repo_ceph() - Configure Ceph repositories
