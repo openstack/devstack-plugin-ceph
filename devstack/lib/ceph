@@ -250,7 +250,7 @@ function _get_ceph_version {
 function _run_as_ceph_or_root {
     local ceph_version
     ceph_version=$(_get_ceph_version cli)
-    if [[ $(echo $ceph_version '>=' 9.2 | bc -l) == 1 ]] ; then
+    if vercmp "$ceph_version" ">=" "9.2"; then
         echo ceph
     else
         echo root
@@ -469,13 +469,13 @@ function configure_ceph {
     local ceph_version
     ceph_version=$(_get_ceph_version mon)
 
-    if [[ $(echo $ceph_version '>=' 14.0 | bc -l) == 1 ]] ; then
+    if vercmp "$ceph_version" ">=" "14.0"; then
         for key in bootstrap-{mds,osd,rgw}; do
             sudo ceph auth get client.$key -o ${CEPH_DATA_DIR}/$key/ceph.keyring
         done
     fi
 
-    if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+    if vercmp "$ceph_version" ">=" "12.1"; then
         sudo mkdir -p ${CEPH_DATA_DIR}/mgr/ceph-${MGR_ID}
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mgr.${MGR_ID} \
             mon 'allow profile mgr' mds 'allow *' osd 'allow *' \
@@ -1225,7 +1225,7 @@ function start_ceph {
         sudo systemctl start ceph-mon@$(hostname)
         local ceph_version
         ceph_version=$(_get_ceph_version mon)
-        if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+        if vercmp "$ceph_version" ">=" "12.1"; then
             sudo systemctl start ceph-mgr@${MGR_ID}
             # use `tell mgr` as the mgr might not have been activated
             # yet to register the python module commands.
@@ -1280,7 +1280,7 @@ function stop_ceph {
         done
         local ceph_version
         ceph_version=$(_get_ceph_version cli)
-        if [[ $(echo $ceph_version '>=' 12.1 | bc -l) == 1 ]] ; then
+        if vercmp "$ceph_version" ">=" "12.1"; then
             sudo systemctl stop ceph-mgr@${MGR_ID}
         fi
         sudo systemctl stop ceph-mon@$(hostname)
