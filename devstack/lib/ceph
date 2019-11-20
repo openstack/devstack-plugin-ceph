@@ -966,7 +966,9 @@ function install_ceph_remote {
     # required packages, meaning we need to install the python3 variants
     # manually. Hopefully this won't be necessary in Focal (20.04)
     # https://packages.ubuntu.com/bionic/ceph-common
-    install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
+    if python3_enabled; then
+        install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
+    fi
 }
 
 # configure_repo_ceph() - Configure Ceph repositories
