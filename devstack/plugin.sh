@@ -104,6 +104,13 @@ elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
         else
             iniset $TEMPEST_CONFIG compute-feature-enabled shelve True
         fi
+        # Attached volume extend support for rbd was introduced in Stein by
+        # I5698e451861828a8b1240d046d1610d8d37ca5a2
+        if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike|queens|rocky) ]]; then
+            iniset $TEMPEST_CONFIG volume-feature-enabled extend_attached_volume False
+        else
+            iniset $TEMPEST_CONFIG volume-feature-enabled extend_attached_volume True
+        fi
     fi
 fi
 
