@@ -31,7 +31,7 @@
     name: devstack-plugin-ceph-tempest
     parent: devstack-plugin-ceph-tempest-base
     description: |
-      Integration tests that runs with the ceph devstack plugin.
+      Integration tests that runs with the ceph devstack plugin and py27.
     branches:
       - stable/ocata
       - stable/pike
@@ -42,12 +42,14 @@
     name: devstack-plugin-ceph-tempest
     parent: devstack-plugin-ceph-tempest-base
     description: |
-      Integration tests that runs with the ceph devstack plugin.
+      Integration tests that runs with the ceph devstack plugin and py27.
 
       This job enable the multiattach feature enable from stein on.
 
     # This job runs with multiattach enable from stable/stein on.
-    branches: ^(?!stable/(ocata|pike|queens|rocky)).*$
+    branches:
+      - stable/stein
+      - stable/train
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
@@ -133,11 +135,6 @@
       Runs devstack-plugin-ceph-tempest jobs.
     check:
       jobs:
-        - devstack-plugin-ceph-tempest:
-            voting: false
-            irrelevant-files:
-              - ^.*\.rst$
-              - ^doc/.*$
         - devstack-plugin-ceph-tempest-py3:
             voting: false
             irrelevant-files:
