@@ -143,6 +143,7 @@
 - project:
     templates:
       - devstack-plugin-ceph-tempest-jobs
+      - publish-openstack-docs-pti
     check:
       jobs:
         - openstack-tox-bashate

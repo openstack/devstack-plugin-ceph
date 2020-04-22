@@ -2,3 +2,6 @@
 .*.sw?
 .prereqs
 .tox
+build
+doc/build
+ChangeLog
