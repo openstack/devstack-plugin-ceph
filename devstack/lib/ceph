@@ -293,16 +293,20 @@ function check_os_support_ceph {
         return
     fi
 
-    if [[ ! ${DISTRO} =~ (bionic|trusty|xenial|jessie|sid|rhel7) ]]; then
+    if [[ ! ${DISTRO} =~ (bionic|xenial|jessie|sid|rhel7) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
-            (at least) the Firefly release. \
-            Please use Ubuntu Trusty or Fedora 27 (and higher)"
+            (at least) the Luminous release. \
+            Please use Ubuntu Bionic or Fedora 29 (and higher)"
         if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
             die $LINENO "If you wish to install Ceph on this distribution \
                 anyway run with FORCE_CEPH_INSTALL=yes, \
                 this assumes that YOU will setup the proper repositories"
         fi
         NO_UPDATE_REPOS=False
+    fi
+
+    if [[ ! $INIT_SYSTEM == 'systemd' ]]; then
+        die "This plugin is only supported on systemd enabled systems currently."
     fi
 }
 
@@ -319,9 +323,6 @@ function check_os_support_for_iscsi {
         die "Ceph iSCSI cannot work.  The required kernel modules are not installed."
     fi
 
-    if [[ ! $INIT_SYSTEM == 'systemd' ]]; then
-        die "Ceph iSCSI is only supported on systemd enabled systems currently."
-    fi
 }
 
 
@@ -453,18 +454,10 @@ function configure_ceph {
         sudo chown -R ceph. ${CEPH_DATA_DIR}
     fi
 
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/upstart
-        sudo initctl emit ceph-mon id=$(hostname)
-    elif [[ $INIT_SYSTEM == 'systemd' ]]; then
-        sudo systemctl enable ceph-mon@$(hostname)
-        sudo systemctl start ceph-mon@$(hostname)
-        # TODO(frickler): Find a better way to make sure that ceph-mon has started
-        sleep 5
-    else
-        sudo touch ${CEPH_DATA_DIR}/mon/ceph-$(hostname)/sysvinit
-        sudo service ceph start mon.$(hostname)
-    fi
+    sudo systemctl enable ceph-mon@$(hostname)
+    sudo systemctl start ceph-mon@$(hostname)
+    # TODO(frickler): Find a better way to make sure that ceph-mon has started
+    sleep 5
 
     local ceph_version
     ceph_version=$(_get_ceph_version mon)
@@ -518,17 +511,8 @@ function configure_ceph {
         else
             sudo ceph-osd -c ${CEPH_CONF_FILE} -i ${OSD_ID} --mkfs
         fi
-        # ceph's init script is parsing ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/
-        # and looking for a file 'upstart' or 'sysinitv'
-        # thanks to these 'touches' we are able to control OSDs daemons
-        # from the init script.
-        if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-            sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/upstart
-        elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-            sudo systemctl enable ceph-osd@${OSD_ID}
-        else
-            sudo touch ${CEPH_DATA_DIR}/osd/ceph-${OSD_ID}/sysvinit
-        fi
+
+        sudo systemctl enable ceph-osd@${OSD_ID}
     done
 
     if is_ceph_enabled_for_service manila; then
@@ -543,13 +527,8 @@ function configure_ceph {
         if [[ $RUN_AS == 'ceph' ]] ; then
             sudo chown ceph. /var/lib/ceph/mds/ceph-${MDS_ID}/keyring
         fi
-        if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-            sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/upstart
-        elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-            sudo systemctl enable ceph-mds@${MDS_ID}
-        else
-            sudo touch ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/sysvinit
-        fi
+
+        sudo systemctl enable ceph-mds@${MDS_ID}
     fi
 
     if [ "$ENABLE_CEPH_RGW" = "True" ]; then
@@ -606,13 +585,7 @@ function _configure_ceph_rgw {
         osd 'allow rwx' mon 'allow rw' \
         -o ${dest}/keyring
 
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo touch ${dest}/{upstart,done}
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
-    else
-        sudo touch ${dest}/{sysvinit,done}
-    fi
+    sudo systemctl enable ceph-radosgw@rgw.$(hostname)
 
     if [[ $RUN_AS == 'ceph' ]] ; then
         sudo chown -R ceph. ${CEPH_DATA_DIR}
@@ -637,12 +610,10 @@ function _configure_ceph_iscsi {
     sudo ceph -c ${CEPH_CONF_FILE} \
             osd pool create ${CEPH_ISCSI_POOL} ${CEPH_ISCSI_POOL_PG}
 
-    if [[ $INIT_SYSTEM == 'systemd' ]]; then
-        sudo systemctl daemon-reload
-        sudo systemctl enable tcmu-runner
-        sudo systemctl enable rbd-target-gw
-        sudo systemctl enable rbd-target-api
-    fi
+    sudo systemctl daemon-reload
+    sudo systemctl enable tcmu-runner
+    sudo systemctl enable rbd-target-gw
+    sudo systemctl enable rbd-target-api
 }
 
 function _post_start_configure_iscsi_gateway {
@@ -660,12 +631,10 @@ function _post_start_configure_iscsi_gateway {
 }
 
 function start_ceph_iscsi {
-    if [[ $INIT_SYSTEM == 'systemd' ]]; then
-        sudo systemctl start tcmu-runner
-        sudo systemctl start rbd-target-gw
-        sudo systemctl start rbd-target-api
-        sleep 10
-    fi
+    sudo systemctl start tcmu-runner
+    sudo systemctl start rbd-target-gw
+    sudo systemctl start rbd-target-api
+    sleep 10
 
     # we have to setup the gateway and api after they start
     _post_start_configure_iscsi_gateway
@@ -676,11 +645,9 @@ function stop_ceph_iscsi {
     sudo $GWCLI /iscsi-targets/$CEPH_ISCSI_TARGET_IQN/gateways delete $HOSTNAME
     sudo $GWCLI /iscsi-targets delete $CEPH_ISCSI_TARGET_IQN
 
-    if [[ $INIT_SYSTEM == 'systemd' ]]; then
-        sudo systemctl stop rbd-target-api
-        sudo systemctl stop rbd-target-gw
-        sudo systemctl stop tcmu-runner
-    fi
+    sudo systemctl stop rbd-target-api
+    sudo systemctl stop rbd-target-gw
+    sudo systemctl stop tcmu-runner
 }
 
 function _create_swift_endpoint {
@@ -699,12 +666,9 @@ function configure_ceph_embedded_rgw_paths {
     if [[ "$CEPH_CONTAINERIZED" == "True" ]]; then
         dest=${CEPH_DATA_DIR}/radosgw/$(hostname)
         key=client.radosgw.gateway
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
+    else
         dest=${CEPH_DATA_DIR}/radosgw/ceph-rgw.$(hostname)
         key=client.rgw.$(hostname)
-    else
-        dest=${CEPH_DATA_DIR}/radosgw/ceph-radosgw.$(hostname)
-        key=client.radosgw.$(hostname)
     fi
 }
 
@@ -728,14 +692,8 @@ function configure_ceph_embedded_rgw {
 }
 
 function start_ceph_embedded_rgw {
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo start radosgw id=radosgw.$(hostname)
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        sudo systemctl enable ceph-radosgw@rgw.$(hostname)
-        sudo systemctl start ceph-radosgw@rgw.$(hostname)
-    else
-        sudo service ceph start rgw.$(hostname)
-    fi
+    sudo systemctl enable ceph-radosgw@rgw.$(hostname)
+    sudo systemctl start ceph-radosgw@rgw.$(hostname)
 }
 
 function configure_ceph_embedded_glance {
@@ -949,10 +907,8 @@ function init_ceph {
         sudo pkill -f radosgw || true
     fi
     if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-        if [[ $INIT_SYSTEM == 'systemd' ]]; then
-            sudo systemctl stop rbd-target-api
-            sudo systemctl stop rbd-target-gw
-        fi
+        sudo systemctl stop rbd-target-api
+        sudo systemctl stop rbd-target-gw
     fi
     if is_ceph_enabled_for_service manila; then
         sudo pkill -f ceph-mds || true
@@ -1215,81 +1171,56 @@ function start_ceph {
     if [[ $RUN_AS == 'ceph' ]] ; then
         sudo chown -R ceph. ${CEPH_DATA_DIR}
     fi
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo initctl emit ceph-mon id=$(hostname)
-        for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
-            sudo start ceph-osd id=${id}
-        done
-        if is_ceph_enabled_for_service manila; then
-            sudo start ceph-mds id=${MDS_ID}
-        fi
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        sudo systemctl start ceph-mon@$(hostname)
-        local ceph_version
-        ceph_version=$(_get_ceph_version mon)
-        if vercmp "$ceph_version" ">=" "12.1"; then
-            sudo systemctl start ceph-mgr@${MGR_ID}
-            # use `tell mgr` as the mgr might not have been activated
-            # yet to register the python module commands.
-            if ! sudo ceph -c ${CEPH_CONF_FILE} tell mgr restful create-self-signed-cert; then
-                echo MGR Restful is not working, perhaps the package is not installed?
-            fi
-        fi
-        for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
-            sudo systemctl start ceph-osd@$id
-        done
-        if is_ceph_enabled_for_service manila; then
-            sudo systemctl start ceph-mds@${MDS_ID}
-        fi
 
-        if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-            start_ceph_iscsi
+    sudo systemctl start ceph-mon@$(hostname)
+    local ceph_version
+    ceph_version=$(_get_ceph_version mon)
+    if vercmp "$ceph_version" ">=" "12.1"; then
+        sudo systemctl start ceph-mgr@${MGR_ID}
+        # use `tell mgr` as the mgr might not have been activated
+        # yet to register the python module commands.
+        if ! sudo ceph -c ${CEPH_CONF_FILE} tell mgr restful create-self-signed-cert; then
+            echo MGR Restful is not working, perhaps the package is not installed?
         fi
-    else
-        sudo service ceph start
+    fi
+    for id in $(sudo ceph -c ${CEPH_CONF_FILE} osd ls); do
+        sudo systemctl start ceph-osd@$id
+    done
+    if is_ceph_enabled_for_service manila; then
+        sudo systemctl start ceph-mds@${MDS_ID}
+    fi
+
+    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
+        start_ceph_iscsi
     fi
 }
 
 # stop_ceph() - Stop running processes (non-screen)
 function stop_ceph {
-    if [[ $INIT_SYSTEM == 'upstart' ]] ; then
-        sudo stop ceph-mon-all > /dev/null 2>&1
-        sudo stop ceph-osd-all > /dev/null 2>&1
-        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-            sudo stop radosgw-all > /dev/null 2>&1
-        fi
-        if is_ceph_enabled_for_service manila; then
-            sudo service ceph-mds-all stop > /dev/null 2>&1
-        fi
-    elif [[ $INIT_SYSTEM == 'systemd' ]] ; then
-        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-            sudo systemctl stop ceph-radosgw@rgw.$(hostname)
-        fi
-        if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-            stop_ceph_iscsi
-        fi
-        if is_ceph_enabled_for_service manila; then
-            sudo systemctl stop ceph-mds@${MDS_ID}
-            if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-                sudo systemctl stop nfs-ganesha
-            fi
-        fi
-        # if mon is dead or unhealthy we won't get the list
-        # of osds but should continue anyways.
-        ids=$(sudo ceph -c ${CEPH_CONF_FILE} osd ls 2>/dev/null --connect-timeout 5)
-        for id in $ids; do
-            sudo systemctl stop ceph-osd@$id
-        done
-        local ceph_version
-        ceph_version=$(_get_ceph_version cli)
-        if vercmp "$ceph_version" ">=" "12.1"; then
-            sudo systemctl stop ceph-mgr@${MGR_ID}
-        fi
-        sudo systemctl stop ceph-mon@$(hostname)
-    else
-        sudo service ceph stop > /dev/null 2>&1
+    if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+        sudo systemctl stop ceph-radosgw@rgw.$(hostname)
     fi
-
+    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
+        stop_ceph_iscsi
+    fi
+    if is_ceph_enabled_for_service manila; then
+        sudo systemctl stop ceph-mds@${MDS_ID}
+        if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
+            sudo systemctl stop nfs-ganesha
+        fi
+    fi
+    # if mon is dead or unhealthy we won't get the list
+    # of osds but should continue anyways.
+    ids=$(sudo ceph -c ${CEPH_CONF_FILE} osd ls 2>/dev/null --connect-timeout 5)
+    for id in $ids; do
+        sudo systemctl stop ceph-osd@$id
+    done
+    local ceph_version
+    ceph_version=$(_get_ceph_version cli)
+    if vercmp "$ceph_version" ">=" "12.1"; then
+        sudo systemctl stop ceph-mgr@${MGR_ID}
+    fi
+    sudo systemctl stop ceph-mon@$(hostname)
 }
 
 # Restore xtrace
