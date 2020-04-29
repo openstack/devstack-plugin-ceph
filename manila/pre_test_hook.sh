@@ -61,6 +61,9 @@ echo "MANILA_USE_SERVICE_INSTANCE_PASSWORD=True" >> $localconf
 # service. This leads to unavailability of created VMs in scenario tests.
 echo 'ENABLE_ISOLATED_METADATA=True' >> $localconf
 
+# Need VMs to be able to access CephFS shares
+echo "MANILA_ALLOW_NAS_SERVER_PORTS_ON_HOST=True" >> $localconf
+
 if [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
     export MANILA_SETUP_IPV6=True
 fi
