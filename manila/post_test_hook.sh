@@ -68,12 +68,12 @@ elif [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
     RUN_MANILA_IPV6_TESTS=True
 fi
 
-# If testing a stable branch, we need to ensure we're testing with supported
-# API micro-versions; so set the versions from code if we're not testing the
-# master branch. If we're testing master, we'll allow manila-tempest-plugin
-# (which is branchless) tell us what versions it wants to test.
 if [[ $ZUUL_BRANCH != "master" ]]; then
-    # Grab the supported API micro-versions from the code
+    # If testing a stable branch, we need to ensure we're testing with
+    # supported API micro-versions; so set the versions from code if we're
+    # not testing the master branch. If we're testing master, we'll allow
+    # manila-tempest-plugin (which is branchless) tell us what versions it
+    # wants to test. Grab the supported API micro-versions from the code
     _API_VERSION_REQUEST_PATH=$BASE/new/manila/manila/api/openstack/api_version_request.py
     _DEFAULT_MIN_VERSION=$(awk '$0 ~ /_MIN_API_VERSION = /{print $3}' $_API_VERSION_REQUEST_PATH)
     _DEFAULT_MAX_VERSION=$(awk '$0 ~ /_MAX_API_VERSION = /{print $3}' $_API_VERSION_REQUEST_PATH)
@@ -83,6 +83,35 @@ if [[ $ZUUL_BRANCH != "master" ]]; then
     # Set these options in tempest.conf
     iniset $TEMPEST_CONFIG share min_api_microversion $MANILA_TEMPEST_MIN_API_MICROVERSION
     iniset $TEMPEST_CONFIG share max_api_microversion $MANILA_TEMPEST_MAX_API_MICROVERSION
+
+    # NOTE(gouthamr): extra rules are needed to allow VMs to mount storage
+    # from the host.
+    # In master/victoria, this is being done by manila's devstack plugin
+    # See: https://review.opendev.org/724202/
+    TCP_PORTS=(2049 111 32803 892 875 662)
+    UDP_PORTS=(111 32769 892 875 662)
+    for ipcmd in iptables ip6tables; do
+        sudo $ipcmd -N manila-nfs
+        sudo $ipcmd -I INPUT 1 -j manila-nfs
+        for port in ${TCP_PORTS[*]}; do
+            sudo $ipcmd -A manila-nfs -m tcp -p tcp --dport $port -j ACCEPT
+        done
+        for port in ${UDP_PORTS[*]}; do
+            sudo $ipcmd -A manila-nfs -m udp -p udp --dport $port -j ACCEPT
+        done
+    done
+
+    # In master/ussuri, this is being done by manila's devstack plugin
+    # See: https://review.opendev.org/724204/
+    if [[ "$(trueorfalse False MANILA_SETUP_IPV6)" == "True" ]]; then
+        # Now that all plugins are loaded, setup BGP here
+        public_gateway_ipv6=$(openstack subnet show ipv6-public-subnet -c gateway_ip -f value)
+        neutron bgp-speaker-create --ip-version 6 --local-as 100 bgpspeaker
+        neutron bgp-speaker-network-add bgpspeaker $PUBLIC_NETWORK_NAME
+        neutron bgp-peer-create --peer-ip $public_gateway_ipv6 --remote-as 200 bgppeer
+        neutron bgp-speaker-peer-add bgpspeaker bgppeer
+    fi
+
 fi
 
 # Set two retries for CI jobs.
@@ -123,33 +152,9 @@ iniset $TEMPEST_CONFIG share run_snapshot_tests $RUN_MANILA_SNAPSHOT_TESTS
 RUN_MANILA_CG_TESTS=${RUN_MANILA_CG_TESTS:-False}
 iniset $TEMPEST_CONFIG share run_consistency_group_tests $RUN_MANILA_CG_TESTS
 
-# NOTE(gouthamr): extra rules are needed to allow VMs to mount storage from
-# the host.
-TCP_PORTS=(2049 111 32803 892 875 662)
-UDP_PORTS=(111 32769 892 875 662)
-for ipcmd in iptables ip6tables; do
-    sudo $ipcmd -N manila-nfs
-    sudo $ipcmd -I INPUT 1 -j manila-nfs
-    for port in ${TCP_PORTS[*]}; do
-        sudo $ipcmd -A manila-nfs -m tcp -p tcp --dport $port -j ACCEPT
-    done
-    for port in ${UDP_PORTS[*]}; do
-        sudo $ipcmd -A manila-nfs -m udp -p udp --dport $port -j ACCEPT
-    done
-done
-
 source $BASE/new/devstack/openrc admin admin
 public_net_id=$(openstack network list --name $PUBLIC_NETWORK_NAME -f value -c ID )
 iniset $TEMPEST_CONFIG network public_network_id $public_net_id
-
-if [ $(trueorfalse False MANILA_SETUP_IPV6) == True ]; then
-    # Now that all plugins are loaded, setup BGP here
-    public_gateway_ipv6=$(openstack subnet show ipv6-public-subnet -c gateway_ip -f value)
-    neutron bgp-speaker-create --ip-version 6 --local-as 100 bgpspeaker
-    neutron bgp-speaker-network-add bgpspeaker $PUBLIC_NETWORK_NAME
-    neutron bgp-peer-create --peer-ip $public_gateway_ipv6 --remote-as 200 bgppeer
-    neutron bgp-speaker-peer-add bgpspeaker bgppeer
-fi
 
 iniset $TEMPEST_CONFIG share run_ipv6_tests $RUN_MANILA_IPV6_TESTS
 
