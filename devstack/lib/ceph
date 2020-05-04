@@ -226,15 +226,23 @@ function is_ceph_enabled_for_service {
 # and healthy.
 function _get_ceph_version {
     local ceph_version_str
+    local mon_started
 
     if [[ $1 == 'cli' ]]; then
+        # ceph --version show CLI version
         ceph_version_str=$(sudo ceph --version | cut -d ' ' -f 3 | \
             cut -d '.' -f 1,2)
     elif [[ $1 == 'mon' ]]; then
-        # TODO(frickler): Find a better way to make sure that ceph-mon has started
-        sleep 5
-        ceph_version_str=$(sudo ceph daemon mon.$(hostname) version | \
-            cut -d '"' -f 4 | cut -f 1,2 -d '.')
+        # ceph version show mon daemon version
+        mon_started=$(wait_for_daemon "sudo systemctl is-active --quiet ceph-mon@$(hostname)")
+
+        if $mon_started; then
+            ceph_version_str=$(sudo ceph version | cut -d ' ' -f 3 | \
+                cut -f 1,2 -d '.')
+        else
+            die $LINENO "ceph-mon@${hostname} is not running and it's not possible to \
+                retrieve it's version"
+        fi
     else
         die $LINENO "Invalid argument. The get_ceph_version function needs \
             an argument that can be 'cli' or 'mon'."
