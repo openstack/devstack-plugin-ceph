@@ -3,8 +3,5 @@
 # The RBD driver only supports LUKS encryption.
 tempest.scenario.test_encrypted_cinder_volumes.TestEncryptedCinderVolumes.test_encrypted_cinder_volumes_cryptsetup
 
-# Rescue from BFV instances. Bug#1876330
-tempest.api.compute.servers.test_server_rescue.ServerBootFromVolumeStableRescueTest
-
 # Skip network API tests since they have no bearing on a Ceph backend.
 tempest.api.network
