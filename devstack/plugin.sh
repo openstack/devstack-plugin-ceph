@@ -111,6 +111,13 @@ elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
         else
             iniset $TEMPEST_CONFIG volume-feature-enabled extend_attached_volume True
         fi
+        # Volume revert to snapshot support for rbd was introduced in Ussuri by
+        # If8a5eb3a03e18f9043ff29f7648234c9b46376a0
+        if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike|queens|rocky|stein|train) ]]; then
+            iniset $TEMPEST_CONFIG volume-feature-enabled volume_revert False
+        else
+            iniset $TEMPEST_CONFIG volume-feature-enabled volume_revert True
+        fi
     fi
 fi
 
