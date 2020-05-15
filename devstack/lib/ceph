@@ -299,7 +299,7 @@ function check_os_support_ceph {
         return
     fi
 
-    if [[ ! ${DISTRO} =~ (bionic|xenial|jessie|sid|rhel7) ]]; then
+    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|jessie|sid|rhel7) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Luminous release. \
             Please use Ubuntu Bionic or Fedora 29 (and higher)"
@@ -1034,7 +1034,7 @@ function setup_packages_for_manila_on_ubuntu {
     install_package apt-transport-https
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        if ! [[ $os_CODENAME =~ (xenial|bionic) ]]; then
+        if ! [[ $os_CODENAME =~ (xenial|bionic|focal) ]]; then
             die $LINENO "Need Ubuntu xenial or newer to setup Manila with CephFS NFS-Ganesha driver"
         fi
         configure_repo_ceph "apt" "luminous" "ubuntu" "$os_CODENAME"
@@ -1044,7 +1044,7 @@ function setup_packages_for_manila_on_ubuntu {
             CEPH_PACKAGES="${CEPH_PACKAGES} python3-cephfs"
         fi
     else # Native driver
-        if ! [[ $os_CODENAME =~ (bionic|xenial|trusty) ]]; then
+        if ! [[ $os_CODENAME =~ (focal|bionic|xenial|trusty) ]]; then
             die $LINENO "Need Ubuntu trusty or newer to setup Manila with CephFS native driver"
         fi
         if [[ $os_CODENAME =~ (trusty) ]]; then
@@ -1079,8 +1079,8 @@ function install_ceph {
 
         if is_ceph_enabled_for_service manila; then
             setup_packages_for_manila_on_ubuntu
-        elif [[ $os_CODENAME =~ bionic ]]; then
-            # Ceph Luminous is available in Ubuntu bionic natively, no need to set up
+        elif [[ $os_CODENAME =~ (bionic|focal) ]]; then
+            # Ceph Luminous is available in Ubuntu bionic or newer natively, no need to set up
             # any additional repos
             true
         elif [ -f "$APT_REPOSITORY_FILE" ]; then
