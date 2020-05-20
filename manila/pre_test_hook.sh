@@ -64,17 +64,16 @@ echo 'ENABLE_ISOLATED_METADATA=True' >> $localconf
 # Need VMs to be able to access CephFS shares
 echo "MANILA_ALLOW_NAS_SERVER_PORTS_ON_HOST=True" >> $localconf
 
-if [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]]; then
-    export MANILA_SETUP_IPV6=True
-fi
-if [[ "$MANILA_SETUP_IPV6" == True ]]; then
+# NOTE(gouthamr): These bash hooks will be deleted in the Victoria cycle,
+# so the branch regex is deliberate.
+IPv6_SUPPORTED_BRANCHES="stable/train stable/ussuri master"
+if [[ $MANILA_CEPH_DRIVER == 'cephfsnfs' && $IPv6_SUPPORTED_BRANCHES =~ $ZUUL_BRANCH ]]; then
     # When setting up proper IPv6 networks, we should do it ourselves so we can
     # use Neutron Dynamic Routing plugin with address scopes instead of the
     # regular Neutron DevStack configuration.
     echo "MANILA_SETUP_IPV6=True" >> $localconf
     echo "MANILA_RESTORE_IPV6_DEFAULT_ROUTE=False" >> $localconf
     echo "NEUTRON_CREATE_INITIAL_NETWORKS=False" >> $localconf
-    echo "IP_VERSION=4+6" >> $localconf
 fi
 
 # Go to Tempest dir and checkout stable commit to avoid possible
