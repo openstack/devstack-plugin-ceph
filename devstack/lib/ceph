@@ -133,10 +133,8 @@ REMOTE_CEPH_ADMIN_KEY_PATH=\
 ${REMOTE_CEPH_ADMIN_KEY_PATH:-$CEPH_CONF_DIR/ceph.client.admin.keyring}
 REMOTE_CEPH_RGW=$(trueorfalse False REMOTE_CEPH_RGW)
 
-if [[ "$TARGET_BRANCH" == "master" ]]; then
-    # TODO: enable this for Queens and later
-    ATTACH_ENCRYPTED_VOLUME_AVAILABLE=True
-else
+if [[ "$TARGET_BRANCH" =~ stable/(ocata|pike) ]]; then
+    # not supported before Queens
     ATTACH_ENCRYPTED_VOLUME_AVAILABLE=False
 fi
 
