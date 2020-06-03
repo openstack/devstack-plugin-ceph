@@ -107,27 +107,19 @@
         ENABLE_VOLUME_MULTIATTACH: true
 
 - job:
+    name: devstack-plugin-ceph-tempest-ussuri-py3
+    parent: devstack-plugin-ceph-tempest-py3
+    override-checkout: stable/ussuri
+
+- job:
+    name: devstack-plugin-ceph-tempest-train-py3
+    parent: devstack-plugin-ceph-tempest-py3
+    override-checkout: stable/train
+
+- job:
     name: devstack-plugin-ceph-tempest-stein-py3
     parent: devstack-plugin-ceph-tempest-py3
     override-checkout: stable/stein
-
-- job:
-    name: devstack-plugin-ceph-tempest-rocky-py3
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-xenial
-    override-checkout: stable/rocky
-    vars:
-      devstack_localrc:
-        ENABLE_VOLUME_MULTIATTACH: false
-
-- job:
-    name: devstack-plugin-ceph-tempest-queens-py3
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-xenial
-    override-checkout: stable/queens
-    vars:
-      devstack_localrc:
-        ENABLE_VOLUME_MULTIATTACH: false
 
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
@@ -160,6 +152,6 @@
             voting: false
         - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
             voting: false
+        - devstack-plugin-ceph-tempest-ussuri-py3
+        - devstack-plugin-ceph-tempest-train-py3
         - devstack-plugin-ceph-tempest-stein-py3
-        - devstack-plugin-ceph-tempest-rocky-py3
-        - devstack-plugin-ceph-tempest-queens-py3
