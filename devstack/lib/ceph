@@ -875,7 +875,7 @@ function install_ceph_remote {
 # configure_repo_ceph() - Configure Ceph repositories
 # Usage: configure_repo_ceph <package_manager> <ceph_release> <distro_type> \
 #                            <distro_release> [<repo_type>]
-# - package_manager: apt or yum
+# - package_manager: apt-get or yum
 # - ceph_release: luminous, ...
 # - distro_type: centos, ubuntu
 # - distro_release: 7, xenial, bionic
@@ -888,7 +888,7 @@ function configure_repo_ceph {
     local repo_type="${5:-latest}"
 
     local repo_file_name=""
-    if [ "${package_manager}" = "apt" ]; then
+    if [ "${package_manager}" = "apt-get" ]; then
         repo_file_name="/etc/apt/sources.list.d/ceph.list"
     elif [ "${package_manager}" = "yum" ]; then
         repo_file_name="/etc/yum.repos.d/ext-ceph.repo"
@@ -915,7 +915,7 @@ function cleanup_repo_ceph {
 # configure_repo_nfsganesha() - Configure NFS Ganesha repositories
 # Usage: configure_repo_nfsganesha <package_manager> <ganesha_flavor> \
 #                                  <distro_type> <distro_release> [<repo_type>]
-# - package_manager: apt or yum
+# - package_manager: apt-get or yum
 # - flavor: ceph_luminous, ceph_master, ...
 # - distro_type: centos, ubuntu
 # - distro_release: 7, xenial, bionic
@@ -928,7 +928,7 @@ function configure_repo_nfsganesha {
     local repo_type="${5:-latest}"
 
     local repo_file_name=""
-    if [ "${package_manager}" = "apt" ]; then
+    if [ "${package_manager}" = "apt-get" ]; then
         repo_file_name="/etc/apt/sources.list.d/ext-nfs-ganesha.list"
     elif [ "${package_manager}" = "yum" ]; then
         repo_file_name="/etc/yum.repos.d/ext-nfs-ganesha.repo"
@@ -991,7 +991,7 @@ function setup_packages_for_iscsi {
 }
 
 function setup_packages_for_manila_on_ubuntu {
-    # The 'apt' package manager needs the following package to access
+    # The 'apt-get' package manager needs the following package to access
     # HTTPS enabled repositories such as the Ceph repos hosted by the
     # shaman/chacra system.
     install_package apt-transport-https
@@ -1000,9 +1000,9 @@ function setup_packages_for_manila_on_ubuntu {
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         if [[ $os_CODENAME =~ (xenial) ]]; then
-            configure_repo_nfsganesha "apt" "$GANESHA_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
+            configure_repo_nfsganesha "apt-get" "$GANESHA_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
         else
-            configure_repo_nfsganesha "apt" "$GANESHA_RELEASE" "ubuntu" "$os_CODENAME"
+            configure_repo_nfsganesha "apt-get" "$GANESHA_RELEASE" "ubuntu" "$os_CODENAME"
         fi
         CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph"
     fi
@@ -1033,9 +1033,9 @@ function install_ceph {
         install_package software-properties-common
 
         if [[ $os_CODENAME =~ (xenial) ]]; then
-            configure_repo_ceph "apt" "$CEPH_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
+            configure_repo_ceph "apt-get" "$CEPH_RELEASE_STABLE" "ubuntu" "$os_CODENAME"
         else
-            configure_repo_ceph "apt" "$CEPH_RELEASE" "ubuntu" "$os_CODENAME"
+            configure_repo_ceph "apt-get" "$CEPH_RELEASE" "ubuntu" "$os_CODENAME"
         fi
 
         CEPH_PACKAGES="ceph libnss3-tools"
