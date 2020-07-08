@@ -43,6 +43,11 @@ MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 MANILA_TEST_TYPE=$3
 MANILA_TEST_TYPE=${MANILA_TEST_TYPE:-api}
 
+# Manila drivers don't support creating shares from snapshots even if
+# snapshots themselves are supported. Let's turn off this capability
+# in tempest.conf
+iniset $TEMPEST_CONFIG share capability_create_share_from_snapshot_support False
+
 if [[ $MANILA_CEPH_DRIVER == 'cephfsnative' ]]; then
     export BACKEND_NAME="CEPHFSNATIVE1"
     iniset $TEMPEST_CONFIG share enable_protocols cephfs
