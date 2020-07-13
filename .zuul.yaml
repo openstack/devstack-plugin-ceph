@@ -1,5 +1,6 @@
 - job:
     name: devstack-plugin-ceph-tempest-base
+    abstract: true
     parent: tempest-full
     description: |
       Base integration tests that runs with the ceph devstack plugin.
@@ -13,6 +14,10 @@
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
+    irrelevant-files: &irrelevant-files
+      - ^.*\.rst$
+      - ^doc/.*$
+      - ^tox.ini$
     timeout: 7200
     vars:
       devstack_plugins:
@@ -56,6 +61,7 @@
 
 - job:
     name: devstack-plugin-ceph-tempest-py3-base
+    abstract: true
     parent: tempest-full-py3
     description: |
       Base integration tests that runs with the ceph devstack plugin and py3.
@@ -67,6 +73,7 @@
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
+    irrelevant-files: *irrelevant-files
     timeout: 7200
     vars:
       devstack_localrc:
@@ -121,16 +128,33 @@
     parent: devstack-plugin-ceph-tempest-py3
     override-checkout: stable/stein
 
+- job:
+    name: devstack-plugin-ceph-cephfs-native
+    description: |
+      Runs manila tempest plugin tests with Native CephFS as a manila back
+      end (DHSS=False)
+    parent: manila-tempest-plugin-cephfs-native
+
+- job:
+    name: devstack-plugin-ceph-cephfs-nfs
+    description: |
+      Runs manila tempest plugin tests with CephFS via NFS-Ganesha as a manila
+      back end (DHSS=False)
+    parent: manila-tempest-plugin-cephfs-nfs
+
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
       Runs devstack-plugin-ceph-tempest jobs.
     check:
       jobs:
-        - devstack-plugin-ceph-tempest-py3:
-            irrelevant-files:
-              - ^.*\.rst$
-              - ^doc/.*$
+        - devstack-plugin-ceph-tempest-py3
+        - devstack-plugin-ceph-cephfs-native:
+            irrelevant-files: *irrelevant-files
+            voting: false
+        - devstack-plugin-ceph-cephfs-nfs:
+            irrelevant-files: *irrelevant-files
+            voting: false
 
 - project:
     templates:
@@ -139,19 +163,11 @@
     check:
       jobs:
         - openstack-tox-bashate
-        - manila-tempest-minimal-dsvm-cephfs-native:
-            voting: false
-        - manila-tempest-minimal-dsvm-cephfs-nfs:
-            voting: false
     gate:
       jobs:
         - openstack-tox-bashate
     experimental:
       jobs:
-        - manila-tempest-minimal-dsvm-cephfs-native-centos-7:
-            voting: false
-        - manila-tempest-minimal-dsvm-cephfs-nfs-centos-7:
-            voting: false
         - devstack-plugin-ceph-tempest-ussuri-py3
         - devstack-plugin-ceph-tempest-train-py3
         - devstack-plugin-ceph-tempest-stein-py3
