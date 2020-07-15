@@ -34,7 +34,7 @@ if (is_ceph_enabled_for_service manila); then
         MANILA_DEFAULT_SHARE_TYPE=cephfstype
         # CephFSNative Driver does not yet support creation of shares from
         # snapshot.
-        MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=False'
+        MANILA_DEFAULT_SHARE_TYPE_EXTRA_SPECS='snapshot_support=True'
 
         MANILA_ENABLED_BACKENDS=cephfsnative1
         MANILA_CONFIGURE_GROUPS=cephfsnative1
