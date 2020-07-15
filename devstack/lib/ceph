@@ -725,7 +725,7 @@ function configure_ceph_manila {
         ${CEPHFS_DATA_POOL}
     sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} auth get-or-create \
         client.${MANILA_CEPH_USER} \
-        mon "allow *" osd "allow rw" mds "allow *" \
+        mon "allow *" osd "allow rw" mds "allow *" mgr "allow *" \
         -o ${CEPH_CONF_DIR}/ceph.client.${MANILA_CEPH_USER}.keyring
     sudo chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.client.${MANILA_CEPH_USER}.keyring
