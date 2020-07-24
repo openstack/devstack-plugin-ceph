@@ -427,6 +427,10 @@ function configure_ceph {
     iniset -sudo ${CEPH_CONF_FILE} client "debug_client" "10"
     iniset -sudo ${CEPH_CONF_FILE} client "debug_ms" "1"
 
+    local gigs
+    gigs=$(echo $CEPH_LOOPBACK_DISK_SIZE | grep -o '^[0-9]*')
+    iniset -sudo ${CEPH_CONF_FILE} global "bluestore_block_size" $((($gigs - 4) << 30))
+
     # bootstrap the ceph monitor
     sudo ceph-mon -c ${CEPH_CONF_FILE} --mkfs -i $(hostname) \
          --keyring ${CEPH_DATA_DIR}/tmp/keyring.mon.$(hostname)
