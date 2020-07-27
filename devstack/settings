@@ -11,7 +11,11 @@ CEPH_PLUGIN_DIR=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
 #       won't be redundant, so its ok to have these
 #       anyways.
 
-TEMPEST_STORAGE_PROTOCOL=ceph
+if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
+    TEMPEST_STORAGE_PROTOCOL=iSCSI
+else
+    TEMPEST_STORAGE_PROTOCOL=ceph
+fi
 # VOLUME_BACKING_FILE_SIZE should be sourced from devstack/stackrc but define
 # a default here if not set already.
 VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-8GB}
