@@ -118,15 +118,14 @@ CEPH_RGW_KEYSTONE_SSL=$(trueorfalse False CEPH_RGW_KEYSTONE_SSL)
 CEPH_ISCSI_TARGET_IQN=${CEPH_ISCSI_TARGET_IQN:-iqn.1993-08.org.opendev:01:a9aa4032d2c1}
 CEPH_ISCSI_API_USER=${CEPH_ISCSI_API_USER:-openstack}
 CEPH_ISCSI_API_PASSWORD=${CEPH_ISCSI_API_PASSWORD:-openstack}
-CEPH_ISCSI_API_HOST=${CEPH_ISCSI_API_HOST:-localhost}
+CEPH_ISCSI_API_HOST=${CEPH_ISCSI_API_HOST:-$SERVICE_HOST}
 CEPH_ISCSI_API_PORT=${CEPH_ISCSI_API_PORT:-5002}
 CEPH_ISCSI_GATEWAY_CFG=${CEPH_CONF_DIR}/iscsi-gateway.cfg
+CEPH_ISCSI_MINIMUM_GATEWAYS=${CEPH_ISCSI_MINIMUM_GATEWAYS:-1}
+
 # gwcli requires a pool named rbd
 CEPH_ISCSI_POOL="rbd"
 CEPH_ISCSI_POOL_PG=${CEPH_ISCSI_POOL_PG:-8}
-TCMU_RUNNER_REPO="https://github.com/open-iscsi/tcmu-runner.git"
-TARGETCLI_REPO="https://github.com/open-iscsi/targetcli-fb.git"
-CEPH_ISCSI_REPO="https://github.com/ceph/ceph-iscsi.git"
 
 # Ceph REST API (for containerized version only)
 # Default is 5000, but Keystone already listens on 5000
@@ -342,9 +341,6 @@ function cleanup_ceph_embedded {
     if [ "$ENABLE_CEPH_RGW" = "True" ]; then
         sudo killall -w -9 radosgw
     fi
-    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-        stop_ceph_iscsi
-    fi
     sudo rm -rf ${CEPH_DATA_DIR}/*/*
     if egrep -q ${CEPH_DATA_DIR} /proc/mounts; then
         sudo umount ${CEPH_DATA_DIR}
@@ -411,6 +407,12 @@ function configure_ceph {
     --import-keyring ${CEPH_CONF_DIR}/ceph.client.admin.keyring
 
     sudo mkdir -p ${CEPH_DATA_DIR}/mon/ceph-$(hostname)
+
+    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
+        # exclusive locks must be enabled by default
+        # for images being exported for ceph iscsi
+        CEPH_RBD_DEFAULT_FEATURES=$(($CEPH_RBD_DEFAULT_FEATURES + 4))
+    fi
 
     # create a default ceph configuration file
     iniset -sudo ${CEPH_CONF_FILE} global "fsid" "${CEPH_FSID}"
@@ -561,6 +563,7 @@ function _configure_ceph_rgw {
 }
 
 function _configure_ceph_iscsi_gateway {
+    iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "minimum_gateways" $CEPH_ISCSI_MINIMUM_GATEWAYS
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "trusted_ip_list" "$HOST_IP,localhost"
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "cluster_name" "ceph"
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "gateway_keyring" "ceph.client.admin.keyring"
@@ -569,7 +572,6 @@ function _configure_ceph_iscsi_gateway {
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "api_user" "$CEPH_ISCSI_API_USER"
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "api_password" "$CEPH_ISCSI_API_PASSWORD"
     iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "api_port" "$CEPH_ISCSI_API_PORT"
-    iniset -sudo ${CEPH_ISCSI_GATEWAY_CFG} config "api_host" "$CEPH_ISCSI_API_HOST"
 }
 
 function _configure_ceph_iscsi {
@@ -587,14 +589,14 @@ function _post_start_configure_iscsi_gateway {
     # Now we setup the rbd-target-gw and rbd-target-api for use
     GWCLI=$(which gwcli)
     removeme=$(sudo systemctl status rbd-target-api)
-    HOSTNAME=$(hostname)
+    FQDN=$(hostname -f)
 
     # create the target_iqn for exporting all volumes
     sudo $GWCLI /iscsi-targets create $CEPH_ISCSI_TARGET_IQN
 
     # now we add the gateway definition
     # Didn't find the gateway, so lets create it
-    sudo $GWCLI /iscsi-targets/$CEPH_ISCSI_TARGET_IQN/gateways create $HOSTNAME $HOST_IP skipchecks=true
+    sudo $GWCLI /iscsi-targets/$CEPH_ISCSI_TARGET_IQN/gateways create $FQDN $HOST_IP skipchecks=true
 }
 
 function start_ceph_iscsi {
@@ -608,8 +610,9 @@ function start_ceph_iscsi {
 }
 
 function stop_ceph_iscsi {
-    HOSTNAME=$(hostname)
-    sudo $GWCLI /iscsi-targets/$CEPH_ISCSI_TARGET_IQN/gateways delete $HOSTNAME
+    GWCLI=$(which gwcli)
+    FQDN=$(hostname -f)
+    sudo $GWCLI /iscsi-targets/$CEPH_ISCSI_TARGET_IQN/gateways delete $FQDN confirm=true
     sudo $GWCLI /iscsi-targets delete $CEPH_ISCSI_TARGET_IQN
 
     sudo systemctl stop rbd-target-api
@@ -956,44 +959,6 @@ function cleanup_repo_nfsganesha {
     fi
 }
 
-function setup_packages_for_iscsi {
-    CWD=$(pwd)
-
-    # We have to install the following required packages for ceph-iscsi
-    # tcmu-runner, trslib-fb, configshell-fb, targetcli-fb, ceph-iscsi
-    git_clone $TCMU_RUNNER_REPO $DEST/tcmu-runner master
-    cd $DEST/tcmu-runner
-    if is_fedora; then
-        # we can run the install extras from tcmu-runner here
-        extra/install_dep.sh
-    fi
-
-    cmake -Dwith-glfs=false -Dwith-qcow=false -DSUPPORT_SYSTEMD=on -DCMAKE_INSTALL_PREFIX=/usr
-    sudo make install
-
-    pip_install rtslib-fb
-    pip_install configshell-fb
-
-    # not in pypi yet.
-    git_clone $TARGETCLI_REPO $DEST/targetcli-fb master
-    cd $DEST/targetcli-fb
-    sudo python setup.py install
-    if [ ! -d /etc/target ]; then
-        sudo mkdir /etc/target
-    fi
-    if [ ! -d /var/target ]; then
-        sudo mkdir /var/target
-    fi
-
-    git_clone $CEPH_ISCSI_REPO $DEST/ceph-iscsi master
-    cd $DEST/ceph-iscsi
-    sudo python setup.py install --install-scripts=/usr/bin
-    sudo cp usr/lib/systemd/system/rbd-target-gw.service /lib/systemd/system
-    sudo cp usr/lib/systemd/system/rbd-target-api.service /lib/systemd/system
-
-    cd $CWD
-}
-
 function setup_packages_for_manila_on_ubuntu {
     # The 'apt-get' package manager needs the following package to access
     # HTTPS enabled repositories such as the Ceph repos hosted by the
@@ -1056,18 +1021,13 @@ function install_ceph {
         fi
 
         if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-pyparsing python-kmodpy python-pyudev"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-gobject python-urwid python-rados python-rbd"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-netifaces python-crypto python-requests python-flask"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-openssl python-rpm open-iscsi"
-
-            # The packages needed to build tcmu-runner, since there is no
-            # ubuntu package yet.
-            CEPH_PACKAGES="${CEPH_PACKAGES} cmake make gcc libnl-genl-3-200"
-            CEPH_PACKAGES="${CEPH_PACKAGES} librbd1 librbd-dev libglib2.0-0 libglib2.0-bin zlib1g"
-            CEPH_PACKAGES="${CEPH_PACKAGES} libkmod2 libnl-genl-3-dev libglib2.0-dev"
-            CEPH_PACKAGES="${CEPH_PACKAGES} zlib1g-dev libkmod-dev"
-            CEPH_PACKAGES="${CEPH_PACKAGES} libgoogle-perftools4 libgoogle-perftools-dev"
+            # Only Ubuntu Focal have the required packages. Using distro provided
+            # packages might be more stable for CI.
+            if [[ $os_CODENAME =~ focal ]]; then
+                CEPH_PACKAGES="${CEPH_PACKAGES} ceph-iscsi targetcli-fb "
+            else
+                die $LINENO "For ubuntu, ceph iscsi only support focal now"
+            fi
         fi
 
         install_package ${CEPH_PACKAGES}
@@ -1091,19 +1051,14 @@ function install_ceph {
         fi
 
         if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-            CEPH_PACKAGES="${CEPH_PACKAGES} librbd1 libkmod2 python-pyparsing python-kmod python-pyudev"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-gobject python-urwid python-rados python-rbd"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-netifaces python-crypto python-requests python-flask"
-            CEPH_PACKAGES="${CEPH_PACKAGES} python-openssl iscsi-initiator-utils"
+            # TODO(xinliang): Install shaman ceph iscsi gateway packages like ceph-ansible:
+            # https://github.com/ceph/ceph-ansible/blob/6dd9b255656b7124f8963cf65a862930fa28d162/roles/ceph-iscsi-gw/tasks/non-container/prerequisites.yml#L2
+            die $LINENO "Ceph iscsi gateway is not supported for ${os_VENDOR} distro yet"
         fi
 
         install_package ${CEPH_PACKAGES}
     else
         die $LINENO "${os_VENDOR} is not supported by the Ceph plugin for Devstack"
-    fi
-
-    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-        setup_packages_for_iscsi
     fi
 }
 
