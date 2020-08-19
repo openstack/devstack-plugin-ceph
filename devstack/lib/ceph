@@ -902,7 +902,7 @@ function configure_repo_ceph {
     fi
 
     if [ -n "${repo_file_name}" ]; then
-        repo=$(curl -L "https://shaman.ceph.com/api/search/?project=ceph&distros=${distro_type}/${distro_release}&ref=${ceph_release}&sha1=${repo_type}" | \
+        repo=$(curl -L "https://shaman.ceph.com/api/search/?project=ceph&status=ready&distros=${distro_type}/${distro_release}&ref=${ceph_release}&sha1=${repo_type}" | \
             jq '.[0] | .chacra_url' | tr -d '"' | awk '{print $1"repo"}')
         curl -L $repo | sudo tee ${repo_file_name}
         sudo ${package_manager} -y update
