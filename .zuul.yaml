@@ -155,6 +155,9 @@
         - devstack-plugin-ceph-cephfs-nfs:
             irrelevant-files: *irrelevant-files
             voting: false
+    gate:
+      jobs:
+        - devstack-plugin-ceph-tempest-py3
 
 - project:
     templates:
