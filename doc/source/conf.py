@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.abspath('../..'))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinxcontrib.rsvgconverter',
     #'sphinx.ext.intersphinx',
     'openstackdocstheme'
 ]
@@ -32,6 +33,7 @@ openstackdocs_bug_project = 'devstack-plugin-ceph'
 openstackdocs_bug_tag = ''
 openstackdocs_auto_version = False
 openstackdocs_auto_name = False
+openstackdocs_pdf_link = True
 
 # autodoc generation is a bit aggressive and a nuisance when doing heavy
 # text edit cycles.
@@ -72,10 +74,15 @@ htmlhelp_basename = '%sdoc' % project
 # [howto/manual]).
 latex_documents = [
     ('index',
-     '%s.tex' % project,
+     'doc-devstack-plugin-ceph.tex',
      u'%s Documentation' % project,
      u'OpenStack Foundation', 'manual'),
 ]
 
 # Example configuration for intersphinx: refer to the Python standard library.
 #intersphinx_mapping = {'http://docs.python.org/': None}
+
+latex_use_xindy = False
+latex_elements = {
+    'extraclassoptions': 'openany,oneside',
+}

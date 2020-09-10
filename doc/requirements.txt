@@ -3,3 +3,4 @@
 # process, which may cause wedges in the gate later.
 openstackdocstheme>=2.2.1 # Apache-2.0
 sphinx>=2.0.0,!=2.1.0 # BSD
+sphinxcontrib-svg2pdfconverter>=0.1.0 # BSD
