@@ -881,66 +881,64 @@ function dnf_add_repository_ceph {
     local ceph_release=$1
     local distro_release=$2
 
-    cat >/etc/yum.repos.d/ceph.repo <<EOF
-    [ceph]
-    name=Ceph packages for \$basearch
-    baseurl=https://download.ceph.com/rpm-{ceph-release}/{distro}/\$basearch
-    enabled=1
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+    cat > ceph.repo <<EOF
+[ceph]
+name=Ceph packages for \$basearch
+baseurl=https://download.ceph.com/rpm-${ceph_release}/${distro_release}/\$basearch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 
-    [ceph-noarch]
-    name=Ceph noarch packages
-    baseurl=https://download.ceph.com/rpm-{ceph-release}/{distro}/noarch
-    enabled=1
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+[ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-${ceph_release}/${distro_release}/noarch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 
-    [ceph-source]
-    name=Ceph source packages
-    baseurl=https://download.ceph.com/rpm-{ceph-release}/{distro}/SRPMS
-    enabled=0
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+[ceph-source]
+name=Ceph source packages
+baseurl=https://download.ceph.com/rpm-${ceph_release}/${distro_release}/SRPMS
+enabled=0
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 EOF
-
-    sed -i -e "s/{ceph-release}/${ceph_release}/" -e "s/{distro}/${distro_release}/" /etc/yum.repos.d/ceph.repo
+    sudo dnf config-manager --add-repo ceph.repo
 }
 
 function dnf_add_repository_nfsganesha {
     local ganesha_release=$1
     local ceph_release=$2
 
-    cat >/etc/yum.repos.d/nfs-ganesha.repo <<EOF
-    [nfs-ganesha]
-    name=NFS Ganesha packages for \$basearch
-    baseurl=https://download.ceph.com/nfs-ganesha/{ganesha-release}/{ceph-release}/\$basearch
-    enabled=1
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+    cat > nfs-ganesha.repo <<EOF
+[nfs-ganesha]
+name=NFS Ganesha packages for \$basearch
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/\$basearch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 
-    [nfs-ganesha-noarch]
-    name=NFS Ganesha noarch packages
-    baseurl=https://download.ceph.com/nfs-ganesha/{ganesha-release}/{ceph-release}/noarch
-    enabled=1
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+[nfs-ganesha-noarch]
+name=NFS Ganesha noarch packages
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/noarch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 
-    [nfs-ganesha-source]
-    name=NFS Ganesha source packages
-    baseurl=https://download.ceph.com/nfs-ganesha/{ganesha-release}/{ceph-release}/SRPMS
-    enabled=0
-    priority=2
-    gpgcheck=1
-    gpgkey=https://download.ceph.com/keys/release.asc
+[nfs-ganesha-source]
+name=NFS Ganesha source packages
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/SRPMS
+enabled=0
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
 EOF
-
-    sed -i -e "s/{ganesha-release}/${ganesha_release}/" -e "s/{ceph-release}/${ceph_release}/" /etc/yum.repos.d/nfsganesha.repo
+    sudo dnf config-manager --add-repo nfs-ganesha.repo
 }
 
 # configure_repo_ceph() - Configure Ceph repositories
