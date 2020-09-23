@@ -142,6 +142,15 @@
       back end (DHSS=False)
     parent: manila-tempest-plugin-cephfs-nfs
 
+- job:
+    name: devstack-plugin-ceph-tempest-fedora-latest
+    parent: devstack-plugin-ceph-tempest-py3
+    description: |
+      Integration tests that runs with the ceph devstack plugin on Fedora.
+    nodeset: devstack-single-node-fedora-latest
+    voting: false
+
+
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -155,6 +164,7 @@
         - devstack-plugin-ceph-cephfs-nfs:
             irrelevant-files: *irrelevant-files
             voting: false
+        - devstack-plugin-ceph-tempest-fedora-latest
     gate:
       jobs:
         - devstack-plugin-ceph-tempest-py3
