@@ -954,11 +954,10 @@ function configure_repo_ceph {
 
     if  is_ubuntu; then
         sudo apt-add-repository -y "deb https://download.ceph.com/debian-${ceph_release}/ ${distro_release} main"
+        sudo ${package_manager} -y update
     elif is_fedora; then
         dnf_add_repository_ceph ${ceph_release} ${distro_release}
     fi
-
-    sudo ${package_manager} -y update
 }
 
 # cleanup_repo_ceph() - Remove Ceph repositories
@@ -986,16 +985,15 @@ function configure_repo_nfsganesha {
     local ceph_release="$3"
 
     if is_ubuntu; then
-            # FIXME(vkmc) We need to use community ppa's because there is no build available
-            # for ubuntu xenial and above for nfs-ganesha-2.7.
-            # Remove this when they provide the build in download.ceph.com
-            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-1.7
-            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-2.7
+        # FIXME(vkmc) We need to use community ppa's because there is no build
+        # available for ubuntu xenial and above for nfs-ganesha-2.7.
+        # Remove this when they provide the build in download.ceph.com
+        sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-1.7
+        sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-2.7
+        sudo ${package_manager} -y update
     elif is_fedora; then
         dnf_add_repository_nfsganesha ${ganesha_release} ${ceph_release}
     fi
-
-    sudo ${package_manager} -y update
 }
 
 # cleanup_repo_nfsganesha() - Remove NFS Ganesha repositories
