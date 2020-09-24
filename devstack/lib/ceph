@@ -1082,8 +1082,8 @@ function install_ceph {
             die $LINENO "Supported for Fedora 31 and 32. Not supported for other releases."
         fi
 
-        # NOTE(vkmc) el7 packages work on Fedora
-        configure_repo_ceph "dnf" "$CEPH_RELEASE" "el7"
+        # NOTE(lyarwood) Use the py3 el8 packages on Fedora
+        configure_repo_ceph "dnf" "$CEPH_RELEASE" "el8"
 
         CEPH_PACKAGES="ceph"
 
