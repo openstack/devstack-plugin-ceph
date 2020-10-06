@@ -822,8 +822,14 @@ function configure_ceph_embedded_nova {
 
 # configure_ceph_nova() - Nova config needs to come after Nova is set up
 function configure_ceph_nova {
-    sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create \
-        ${NOVA_CEPH_POOL} ${NOVA_CEPH_POOL_PG} ${NOVA_CEPH_POOL_PGP}
+
+    # When REMOTE_CEPH=True is set on subnodes skip the creation of the nova
+    # pool as it has already been created on the controller that has
+    # REMOTE_CEPH=False.
+    if [[ "$REMOTE_CEPH" == "False" ]]; then
+        sudo $DOCKER_EXEC ceph -c ${CEPH_CONF_FILE} osd pool create \
+            ${NOVA_CEPH_POOL} ${NOVA_CEPH_POOL_PG} ${NOVA_CEPH_POOL_PGP}
+    fi
 
     iniset $NOVA_CONF libvirt rbd_user ${CINDER_CEPH_USER}
     iniset $NOVA_CONF libvirt rbd_secret_uuid ${CINDER_CEPH_UUID}
