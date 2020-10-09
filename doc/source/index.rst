@@ -7,8 +7,8 @@ Welcome to Devstack Plugin Ceph's documentation!
 
    readme
 
-For Contributor
----------------
+For Contributors
+----------------
 If you are a new contributor to devstack-plugin-ceph please refer: :doc:`contributor/contributing`
 
 .. toctree::
@@ -16,7 +16,9 @@ If you are a new contributor to devstack-plugin-ceph please refer: :doc:`contrib
 
    contributor/contributing
 
-Indices and tables
-------------------
+.. only:: html
 
-* :ref:`search`
+    Indices and tables
+    ------------------
+
+    * :ref:`search`
