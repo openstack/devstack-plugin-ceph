@@ -954,6 +954,7 @@ function configure_repo_ceph {
 
     if  is_ubuntu; then
         sudo apt-add-repository -y "deb https://download.ceph.com/debian-${ceph_release}/ ${distro_release} main"
+        wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add -
         sudo ${package_manager} -y update
     elif is_fedora; then
         dnf_add_repository_ceph ${ceph_release} ${distro_release}
