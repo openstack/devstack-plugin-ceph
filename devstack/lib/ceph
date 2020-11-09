@@ -332,6 +332,9 @@ function cleanup_ceph_remote {
         sudo ceph -c ${CEPH_CONF_FILE} osd pool delete $NOVA_CEPH_POOL $NOVA_CEPH_POOL \
             --yes-i-really-really-mean-it > /dev/null 2>&1
     fi
+
+    # Clean up the disk image and mount that we created
+    destroy_disk ${CEPH_DISK_IMAGE} ${CEPH_DATA_DIR}
 }
 
 function cleanup_ceph_embedded {
