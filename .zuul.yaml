@@ -114,6 +114,27 @@
         ENABLE_VOLUME_MULTIATTACH: true
 
 - job:
+    name: devstack-plugin-ceph-compute-local-ephemeral
+    parent: devstack-plugin-ceph-tempest-py3-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin and py3.
+
+      This job does not configure Nova to use rbd for ephemeral storage. It
+      also enables the direct download of images via rbd into the local
+      imagecache for Nova.
+    vars:
+      devstack_local_conf:
+        post-config:
+          $NOVA_CONF:
+            glance:
+              enable_rbd_download: True
+              rbd_user: glance
+              rbd_ceph_conf: /etc/ceph/ceph.conf
+              rbd_pool: images
+            libvirt:
+              images_type: default
+
+- job:
     name: devstack-plugin-ceph-tempest-ussuri-py3
     parent: devstack-plugin-ceph-tempest-py3
     override-checkout: stable/ussuri
@@ -184,3 +205,4 @@
         - devstack-plugin-ceph-tempest-ussuri-py3
         - devstack-plugin-ceph-tempest-train-py3
         - devstack-plugin-ceph-tempest-stein-py3
+        - devstack-plugin-ceph-compute-local-ephemeral
