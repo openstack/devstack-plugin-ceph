@@ -496,7 +496,7 @@ function configure_ceph {
         sudo ceph -c ${CEPH_CONF_FILE} auth get-or-create mds.${MDS_ID} \
             mon 'allow profile mds ' osd 'allow rw' mds 'allow' \
             -o ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
-        sudo chown ceph. /var/lib/ceph/mds/ceph-${MDS_ID}/keyring
+        sudo chown ceph. ${CEPH_DATA_DIR}/mds/ceph-${MDS_ID}/keyring
 
         sudo systemctl enable ceph-mds@${MDS_ID}
     fi
@@ -1187,6 +1187,16 @@ function stop_ceph {
 
     # NOTE(vkmc) Cleanup any leftover unit files
     sudo rm -f /etc/systemd/system/ceph*
+
+    # Clean up CEPH_DATA_DIR
+    sudo umount ${CEPH_DATA_DIR}
+    # devstack create_disk function adds an entry in /etc/fstab
+    # that doesn't always get cleaned up on restacks so clean it
+    # up here.  Use a pattern that escapes the '/' path delimiters
+    # in the expresssion given to the sed command.
+    pattern=$(echo $CEPH_DATA_DIR | sed 's_/_\\/_g')
+    sudo sed -i "/$pattern/d" /etc/fstab
+    sudo rm -rf ${CEPH_DATA_DIR}/*
 }
 
 # Restore xtrace
