@@ -776,6 +776,21 @@ RADOS_URLS {
     ceph_conf = ${CEPH_CONF_FILE};
     userid = admin;
 }
+
+CACHEINODE {
+        Dir_Max = 1;
+        Dir_Chunk = 0;
+
+        Cache_FDs = false;
+
+        NParts = 1;
+        Cache_Size = 1;
+}
+
+EXPORT_DEFAULTS {
+        Attr_Expiration_Time = 0;
+}
+
 %url rados://${CEPHFS_DATA_POOL}/ganesha-export-index
 EOF
     else
