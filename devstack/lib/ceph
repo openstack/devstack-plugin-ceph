@@ -1019,8 +1019,8 @@ function cleanup_repo_nfsganesha {
         # FIXME(vkmc) We need to use community ppa's because there are no builds
         # for ubuntu bionic and ubuntu focal available for nfs-ganesha 2.7 and above
         # Remove this when they provide the builds in download.ceph.com
-        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-3_0-*.list
-        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-3_0-*.list
+        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-3_0-*.list*
+        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-3_0-*.list*
     elif is_fedora; then
         sudo rm -rf /etc/yum.repos.d/nfs-ganesha.repo
     fi
