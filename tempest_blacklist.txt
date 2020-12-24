@@ -3,5 +3,6 @@
 # The RBD driver only supports LUKS encryption.
 tempest.scenario.test_encrypted_cinder_volumes.TestEncryptedCinderVolumes.test_encrypted_cinder_volumes_cryptsetup
 
-# Skip network API tests since they have no bearing on a Ceph backend.
+# Skip network and identity API tests since they have no bearing on a Ceph backend.
 tempest.api.network
+tempest.api.identity
