@@ -425,7 +425,6 @@ function configure_ceph {
     iniset -sudo ${CEPH_CONF_FILE} global "osd pool default size" "${CEPH_REPLICAS}"
     iniset -sudo ${CEPH_CONF_FILE} global "rbd default features" "${CEPH_RBD_DEFAULT_FEATURES}"
     iniset -sudo ${CEPH_CONF_FILE} client "debug_client" "10"
-    iniset -sudo ${CEPH_CONF_FILE} client "debug_ms" "1"
 
     local gigs
     gigs=$(echo $CEPH_LOOPBACK_DISK_SIZE | grep -o '^[0-9]*')
