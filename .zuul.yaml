@@ -196,6 +196,17 @@
           REMOTE_CEPH: true
           CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
 
+- job:
+    name: devstack-plugin-ceph-master-tempest
+    parent: devstack-plugin-ceph-tempest-py3-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin
+      using Ceph master as the backend.
+    branches: master
+    vars:
+      devstack_localrc:
+        TEST_MASTER: true
+
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -211,6 +222,8 @@
             voting: false
         - devstack-plugin-ceph-tempest-fedora-latest
         - devstack-plugin-ceph-multinode-tempest-py3
+        - devstack-plugin-ceph-master-tempest:
+            voting: false
     gate:
       jobs:
         - devstack-plugin-ceph-tempest-py3

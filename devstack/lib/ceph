@@ -26,6 +26,8 @@ set +o xtrace
 # Defaults
 # --------
 
+TEST_MASTER=$(trueorfalse False TEST_MASTER)
+
 CEPH_RELEASE=${CEPH_RELEASE:-octopus}
 
 GANESHA_RELEASE=${GANESHA_RELEASE:-V3.3-stable}
@@ -969,11 +971,22 @@ function configure_repo_ceph {
     local distro_release="$3"
 
     if  is_ubuntu; then
-        wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add -
-        sudo apt-add-repository -y "deb https://download.ceph.com/debian-${ceph_release}/ ${distro_release} main"
+        if [[ "${TEST_MASTER}" == "True" ]]; then
+            repo_file_name="/etc/apt/sources.list.d/ceph-master.list"
+            sudo wget -c "https://shaman.ceph.com/api/repos/ceph/master/latest/ubuntu/${distro_release}/flavors/default/repo" -O ${repo_file_name}
+        else
+            wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add -
+            sudo apt-add-repository -y "deb https://download.ceph.com/debian-${ceph_release}/ ${distro_release} main"
+        fi
         sudo ${package_manager} -y update
     elif is_fedora; then
-        dnf_add_repository_ceph ${ceph_release} ${distro_release}
+        if [[ "${TEST_MASTER}" == "True" ]]; then
+            repo_file_name="/etc/yum.repos.d/ceph-master.repo"
+            sudo wget -c "https://shaman.ceph.com/api/repos/ceph/master/latest/centos/${distro_release}/flavors/default/repo" -O ${repo_file_name}
+            sudo dnf config-manager --add-repo ${repo_file_name}
+        else
+            dnf_add_repository_ceph ${ceph_release} ${distro_release}
+        fi
     fi
 }
 
