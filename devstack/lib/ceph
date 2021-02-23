@@ -26,9 +26,7 @@ set +o xtrace
 # Defaults
 # --------
 
-CEPH_RELEASE=${CEPH_RELEASE:-nautilus}
-
-CEPH_RELEASE_STABLE=${CEPH_RELEASE_STABLE:-luminous}
+CEPH_RELEASE=${CEPH_RELEASE:-octopus}
 
 GANESHA_RELEASE=${GANESHA_RELEASE:-V3.3-stable}
 
@@ -979,9 +977,6 @@ function configure_repo_ceph {
 # Usage: cleanup_repo_ceph
 function cleanup_repo_ceph {
     if is_ubuntu; then
-        if [[ $os_CODENAME =~ (xenial) ]]; then
-            sudo apt-add-repository -r -y "deb https://download.ceph.com/debian-${CEPH_RELEASE_STABLE}/ ${os_CODENAME} main"
-        fi
         sudo apt-add-repository -r -y "deb https://download.ceph.com/debian-${CEPH_RELEASE}/ ${os_CODENAME} main"
     elif is_fedora; then
         sudo rm -rf /etc/yum.repos.d/ceph.repo
@@ -992,7 +987,7 @@ function cleanup_repo_ceph {
 # Usage: configure_repo_nfsganesha <package_manager> <ganesha_flavor> \
 #                                  <distro_type> <distro_release> [<repo_type>]
 # - package_manager: apt-get or dnf
-# - ganesha_release: 2.5, 2.5
+# - ganesha_release: 2.7, 2.8, 3.0
 # - ceph_release: ceph_luminous, ceph_nautilus
 function configure_repo_nfsganesha {
     local package_manager="$1"
@@ -1003,8 +998,18 @@ function configure_repo_nfsganesha {
         # FIXME(vkmc) We need to use community ppa's because there are no builds
         # for ubuntu bionic and ubuntu focal available for nfs-ganesha 2.7 and above
         # Remove this when they provide the build in download.ceph.com
-        sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
-        sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
+        if [ $GANESHA_RELEASE == 'V3.3-stable' ]; then
+            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
+            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
+        elif [ $GANESHA_RELEASE == 'V2.8-stable' ]; then
+            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-1.8
+            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-2.8
+        elif [ $GANESHA_RELEASE == 'V2.7-stable' ]; then
+            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-1.7
+            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-2.7
+        else
+            die $LINENO "GANESHA_RELEASE is not supported by the Ceph plugin for Devstack"
+        fi
         sudo ${package_manager} -y update
     elif is_fedora; then
         dnf_add_repository_nfsganesha rpm-${ganesha_release} ${ceph_release}
@@ -1018,8 +1023,18 @@ function cleanup_repo_nfsganesha {
         # FIXME(vkmc) We need to use community ppa's because there are no builds
         # for ubuntu bionic and ubuntu focal available for nfs-ganesha 2.7 and above
         # Remove this when they provide the builds in download.ceph.com
-        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-3_0-*.list*
-        sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-3_0-*.list*
+        if [ $GANESHA_RELEASE == 'V3.3-stable' ]; then
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-3_0-*.list*
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-3_0-*.list*
+        elif [ $GANESHA_RELEASE == 'V2.8-stable' ]; then
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-1_8-*.list*
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-2_8-*.list*
+        elif [ $GANESHA_RELEASE == 'V2.7-stable' ]; then
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-1_7-*.list*
+            sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-2_7-*.list*
+        else
+            die $LINENO "GANESHA_RELEASE is not supported by the Ceph plugin for Devstack"
+        fi
     elif is_fedora; then
         sudo rm -rf /etc/yum.repos.d/nfs-ganesha.repo
     fi
@@ -1029,11 +1044,7 @@ function setup_packages_for_manila_on_ubuntu {
     CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        if [[ $os_CODENAME =~ (xenial) ]]; then
-            configure_repo_nfsganesha "apt-get" "$GANESHA_RELEASE" "$CEPH_RELEASE_STABLE"
-        else
-            configure_repo_nfsganesha "apt-get" "$GANESHA_RELEASE" "$CEPH_RELEASE"
-        fi
+        configure_repo_nfsganesha "apt-get" "$GANESHA_RELEASE" "$CEPH_RELEASE"
         CEPH_PACKAGES="${CEPH_PACKAGES} libntirpc3 nfs-ganesha nfs-ganesha-ceph \
                                         nfs-ganesha-rados-urls nfs-ganesha-vfs"
     fi
@@ -1062,11 +1073,7 @@ function install_ceph {
         # NOTE(vkmc) Dependencies for setting up repos
         install_package software-properties-common
 
-        if [[ $os_CODENAME =~ (xenial) ]]; then
-            configure_repo_ceph "apt-get" "$CEPH_RELEASE_STABLE" "$os_CODENAME"
-        else
-            configure_repo_ceph "apt-get" "$CEPH_RELEASE" "$os_CODENAME"
-        fi
+        configure_repo_ceph "apt-get" "$CEPH_RELEASE" "$os_CODENAME"
 
         CEPH_PACKAGES="ceph libnss3-tools"
         if python3_enabled; then

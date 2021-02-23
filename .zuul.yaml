@@ -42,6 +42,9 @@
       - stable/pike
       - stable/queens
       - stable/rocky
+    vars:
+      devstack_localrc:
+        CEPH_RELEASE: "luminous"
 
 - job:
     name: devstack-plugin-ceph-tempest
@@ -58,6 +61,7 @@
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
+        CEPH_RELEASE: "nautilus"
 
 - job:
     name: devstack-plugin-ceph-tempest-py3-base
@@ -98,6 +102,9 @@
       - stable/pike
       - stable/queens
       - stable/rocky
+    vars:
+      devstack_localrc:
+        CEPH_RELEASE: "luminous"
 
 - job:
     name: devstack-plugin-ceph-tempest-py3
@@ -112,6 +119,8 @@
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
+        CEPH_RELEASE: "nautilus"
+        GANESHA_RELEASE: "V2.8-stable"
 
 - job:
     name: devstack-plugin-ceph-compute-local-ephemeral
