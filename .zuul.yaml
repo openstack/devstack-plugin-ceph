@@ -144,19 +144,22 @@
               images_type: default
 
 - job:
-    name: devstack-plugin-ceph-tempest-ussuri-py3
+    name: devstack-plugin-ceph-tempest-victoria
     parent: devstack-plugin-ceph-tempest-py3
+    nodeset: openstack-single-node-focal
+    override-checkout: stable/victoria
+
+- job:
+    name: devstack-plugin-ceph-tempest-ussuri
+    parent: devstack-plugin-ceph-tempest-py3
+    nodeset: openstack-single-node-bionic
     override-checkout: stable/ussuri
 
 - job:
-    name: devstack-plugin-ceph-tempest-train-py3
+    name: devstack-plugin-ceph-tempest-train
     parent: devstack-plugin-ceph-tempest-py3
+    nodeset: openstack-single-node-bionic
     override-checkout: stable/train
-
-- job:
-    name: devstack-plugin-ceph-tempest-stein-py3
-    parent: devstack-plugin-ceph-tempest-py3
-    override-checkout: stable/stein
 
 - job:
     name: devstack-plugin-ceph-cephfs-native
@@ -211,7 +214,7 @@
         - openstack-tox-bashate
     experimental:
       jobs:
-        - devstack-plugin-ceph-tempest-ussuri-py3
-        - devstack-plugin-ceph-tempest-train-py3
-        - devstack-plugin-ceph-tempest-stein-py3
+        - devstack-plugin-ceph-tempest-victoria
+        - devstack-plugin-ceph-tempest-ussuri
+        - devstack-plugin-ceph-tempest-train
         - devstack-plugin-ceph-compute-local-ephemeral
