@@ -57,7 +57,7 @@ MDS_ID=${MDS_ID:-a}
 MGR_ID=${MGR_ID:-x}
 
 # RBD configuration defaults
-CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-1}
+CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-"layering, exclusive-lock, object-map, fast-diff"}
 
 # Glance
 GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
@@ -403,12 +403,6 @@ function configure_ceph {
     --import-keyring ${CEPH_CONF_DIR}/ceph.client.admin.keyring
 
     sudo mkdir -p ${CEPH_DATA_DIR}/mon/ceph-$(hostname)
-
-    if [ "$ENABLE_CEPH_ISCSI" = "True" ]; then
-        # exclusive locks must be enabled by default
-        # for images being exported for ceph iscsi
-        CEPH_RBD_DEFAULT_FEATURES=$(($CEPH_RBD_DEFAULT_FEATURES + 4))
-    fi
 
     # create a default ceph configuration file
     iniset -sudo ${CEPH_CONF_FILE} global "fsid" "${CEPH_FSID}"
