@@ -30,7 +30,7 @@
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
+      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
     name: devstack-plugin-ceph-tempest
@@ -90,7 +90,7 @@
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_blacklist.txt'
+      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
     name: devstack-plugin-ceph-tempest-py3
