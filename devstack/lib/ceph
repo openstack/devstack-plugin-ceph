@@ -133,6 +133,9 @@ CEPH_ISCSI_POOL_PG=${CEPH_ISCSI_POOL_PG:-8}
 # Default is 5000, but Keystone already listens on 5000
 CEPH_REST_API_PORT=${CEPH_REST_API_PORT:-5001}
 
+# Set minimum client version
+CEPH_MIN_CLIENT_VERSION=${CEPH_MIN_CLIENT_VERSION}
+
 # Connect to an existing Ceph cluster
 REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
 REMOTE_CEPH_ADMIN_KEY_PATH=\
@@ -483,6 +486,11 @@ function configure_ceph {
 
         sudo systemctl enable ceph-osd@${OSD_ID}
     done
+
+    if [ ! -z "$CEPH_MIN_CLIENT_VERSION" ]; then
+        sudo ceph -c ${CEPH_CONF_FILE} \
+            osd set-require-min-compat-client ${CEPH_MIN_CLIENT_VERSION}
+    fi
 
     if is_ceph_enabled_for_service manila; then
         # create a MDS
