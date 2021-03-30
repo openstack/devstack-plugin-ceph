@@ -57,7 +57,11 @@ MDS_ID=${MDS_ID:-a}
 MGR_ID=${MGR_ID:-x}
 
 # RBD configuration defaults
-CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-"layering, exclusive-lock, object-map, fast-diff"}
+if [[ ${DISTRO} =~ (bionic|xenial) ]]; then
+    CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-"layering, exclusive-lock"}
+else
+    CEPH_RBD_DEFAULT_FEATURES=${CEPH_RBD_DEFAULT_FEATURES:-"layering, exclusive-lock, object-map, fast-diff"}
+fi
 
 # Glance
 GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
