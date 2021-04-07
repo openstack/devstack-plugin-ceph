@@ -229,6 +229,9 @@
             voting: false
         - devstack-plugin-ceph-tempest-fedora-latest
         - devstack-plugin-ceph-multinode-tempest-py3
+        - devstack-plugin-ceph-tempest-victoria
+        - devstack-plugin-ceph-tempest-ussuri
+        - devstack-plugin-ceph-tempest-train
     gate:
       jobs:
         - devstack-plugin-ceph-tempest-py3
@@ -245,7 +248,4 @@
         - openstack-tox-bashate
     experimental:
       jobs:
-        - devstack-plugin-ceph-tempest-victoria
-        - devstack-plugin-ceph-tempest-ussuri
-        - devstack-plugin-ceph-tempest-train
         - devstack-plugin-ceph-compute-local-ephemeral
