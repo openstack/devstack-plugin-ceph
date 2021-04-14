@@ -37,27 +37,6 @@
     parent: devstack-plugin-ceph-tempest-base
     description: |
       Integration tests that runs with the ceph devstack plugin and py27.
-    branches:
-      - stable/ocata
-      - stable/pike
-      - stable/queens
-      - stable/rocky
-    vars:
-      devstack_localrc:
-        CEPH_RELEASE: "luminous"
-
-- job:
-    name: devstack-plugin-ceph-tempest
-    parent: devstack-plugin-ceph-tempest-base
-    description: |
-      Integration tests that runs with the ceph devstack plugin and py27.
-
-      This job enable the multiattach feature enable from stein on.
-
-    # This job runs with multiattach enable from stable/stein on.
-    branches:
-      - stable/stein
-      - stable/train
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
@@ -97,25 +76,6 @@
     parent: devstack-plugin-ceph-tempest-py3-base
     description: |
       Integration tests that runs with the ceph devstack plugin and py3.
-    branches:
-      - stable/ocata
-      - stable/pike
-      - stable/queens
-      - stable/rocky
-    vars:
-      devstack_localrc:
-        CEPH_RELEASE: "luminous"
-
-- job:
-    name: devstack-plugin-ceph-tempest-py3
-    parent: devstack-plugin-ceph-tempest-py3-base
-    description: |
-      Integration tests that runs with the ceph devstack plugin and py3.
-
-      This job enable the multiattach feature enable from stein on.
-
-    # This job runs with multiattach enable from stable/stein on.
-    branches: ^(?!stable/(ocata|pike|queens|rocky)).*$
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
@@ -142,24 +102,6 @@
               rbd_pool: images
             libvirt:
               images_type: default
-
-- job:
-    name: devstack-plugin-ceph-tempest-victoria
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-focal
-    override-checkout: stable/victoria
-
-- job:
-    name: devstack-plugin-ceph-tempest-ussuri
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-bionic
-    override-checkout: stable/ussuri
-
-- job:
-    name: devstack-plugin-ceph-tempest-train
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-bionic
-    override-checkout: stable/train
 
 - job:
     name: devstack-plugin-ceph-cephfs-native
@@ -220,6 +162,7 @@
       Runs devstack-plugin-ceph-tempest jobs.
     check:
       jobs:
+        - devstack-plugin-ceph-tempest
         - devstack-plugin-ceph-tempest-py3
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
@@ -229,11 +172,9 @@
             voting: false
         - devstack-plugin-ceph-tempest-fedora-latest
         - devstack-plugin-ceph-multinode-tempest-py3
-        - devstack-plugin-ceph-tempest-victoria
-        - devstack-plugin-ceph-tempest-ussuri
-        - devstack-plugin-ceph-tempest-train
     gate:
       jobs:
+        - devstack-plugin-ceph-tempest
         - devstack-plugin-ceph-tempest-py3
 
 - project:
