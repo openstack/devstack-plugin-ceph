@@ -144,24 +144,6 @@
               images_type: default
 
 - job:
-    name: devstack-plugin-ceph-tempest-victoria
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-focal
-    override-checkout: stable/victoria
-
-- job:
-    name: devstack-plugin-ceph-tempest-ussuri
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-bionic
-    override-checkout: stable/ussuri
-
-- job:
-    name: devstack-plugin-ceph-tempest-train
-    parent: devstack-plugin-ceph-tempest-py3
-    nodeset: openstack-single-node-bionic
-    override-checkout: stable/train
-
-- job:
     name: devstack-plugin-ceph-cephfs-native
     description: |
       Runs manila tempest plugin tests with Native CephFS as a manila back
@@ -229,9 +211,6 @@
             voting: false
         - devstack-plugin-ceph-tempest-fedora-latest
         - devstack-plugin-ceph-multinode-tempest-py3
-        - devstack-plugin-ceph-tempest-victoria
-        - devstack-plugin-ceph-tempest-ussuri
-        - devstack-plugin-ceph-tempest-train
     gate:
       jobs:
         - devstack-plugin-ceph-tempest-py3
