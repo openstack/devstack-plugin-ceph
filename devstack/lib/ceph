@@ -28,9 +28,9 @@ set +o xtrace
 
 TEST_MASTER=$(trueorfalse False TEST_MASTER)
 
-CEPH_RELEASE=${CEPH_RELEASE:-octopus}
+CEPH_RELEASE=${CEPH_RELEASE:-pacific}
 
-GANESHA_RELEASE=${GANESHA_RELEASE:-V3.3-stable}
+GANESHA_RELEASE=${GANESHA_RELEASE:-V3.5-stable}
 
 # Deploy a Ceph demo container instead of a non-containerized version
 CEPH_CONTAINERIZED=$(trueorfalse False CEPH_CONTAINERIZED)
@@ -1018,7 +1018,9 @@ function configure_repo_nfsganesha {
         # FIXME(vkmc) We need to use community ppa's because there are no builds
         # for ubuntu bionic and ubuntu focal available for nfs-ganesha 2.7 and above
         # Remove this when they provide the build in download.ceph.com
-        if [ $GANESHA_RELEASE == 'V3.3-stable' ]; then
+        # FIXME(vkmc) Community ppa's don't provide builds for nfs-ganesha-3
+        # microversions (3.3, 3.5). Default to latest.
+        if [[ $GANESHA_RELEASE =~ V3.(3|5)-stable ]]; then
             sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
             sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
         elif [ $GANESHA_RELEASE == 'V2.8-stable' ]; then
@@ -1043,7 +1045,9 @@ function cleanup_repo_nfsganesha {
         # FIXME(vkmc) We need to use community ppa's because there are no builds
         # for ubuntu bionic and ubuntu focal available for nfs-ganesha 2.7 and above
         # Remove this when they provide the builds in download.ceph.com
-        if [ $GANESHA_RELEASE == 'V3.3-stable' ]; then
+        # FIXME(vkmc) Community ppa's don't provide builds for nfs-ganesha-3
+        # microversions (3.3, 3.5). Default to latest.
+        if [[ $GANESHA_RELEASE =~ V3.(3|5)-stable ]]; then
             sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-libntirpc-3_0-*.list*
             sudo rm -rf /etc/apt/sources.list.d/nfs-ganesha-ubuntu-nfs-ganesha-3_0-*.list*
         elif [ $GANESHA_RELEASE == 'V2.8-stable' ]; then
