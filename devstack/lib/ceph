@@ -270,11 +270,11 @@ function _undefine_virsh_secret {
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|f31|f32|f33|f34) ]]; then
+    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|f31|f32|f33|f34|rhel8) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Luminous release. \
-            Please use Ubuntu Xenial, Ubuntu Bionic, Ubuntu Focal or
-            Fedora 31-34"
+            Please use Ubuntu Xenial, Ubuntu Bionic, Ubuntu Focal, Fedora 31-34,
+            or CentOS Stream 8."
         if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
             die $LINENO "If you wish to install Ceph on this distribution \
                 anyway run with FORCE_CEPH_INSTALL=yes, \
