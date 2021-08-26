@@ -879,6 +879,8 @@ function configure_ceph_cinder {
 
     sudo chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring
+
+    sudo rbd pool init ${CINDER_CEPH_POOL}
 }
 
 # install_ceph() - Collect source and prepare
