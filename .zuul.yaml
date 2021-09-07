@@ -12,7 +12,8 @@
         # override DEVSTACK_GATE_TEMPEST_REGEX to further refine the set of
         # tests being run.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: opendev.org/openstack/cinder-tempest-plugin
+        override-checkout: stein-last
       - openstack/devstack-plugin-ceph
     irrelevant-files: &irrelevant-files
       - ^.*\.rst$
@@ -54,7 +55,8 @@
       The original job included support for an un-used tempest-dsvm-ceph-rc
       hosted at /opt/stack/new/nova/devstack/tempest-dsvm-ceph-rc.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: opendev.org/openstack/cinder-tempest-plugin
+        override-checkout: stein-last
       - openstack/devstack-plugin-ceph
     irrelevant-files: *irrelevant-files
     timeout: 7200
@@ -132,7 +134,8 @@
       Integration tests that runs the ceph device plugin across multiple
       nodes on py3.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: opendev.org/openstack/cinder-tempest-plugin
+        override-checkout: stein-last
       - openstack/devstack-plugin-ceph
     timeout: 10800
     voting: false
