@@ -119,8 +119,7 @@
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
-        CEPH_RELEASE: "nautilus"
-        GANESHA_RELEASE: "V2.8-stable"
+        CEPH_RELEASE: "pacific"
 
 - job:
     name: devstack-plugin-ceph-compute-local-ephemeral
