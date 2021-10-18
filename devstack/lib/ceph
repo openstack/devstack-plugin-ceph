@@ -934,7 +934,7 @@ function dnf_add_repository_nfsganesha {
     cat > nfs-ganesha.repo <<EOF
 [nfs-ganesha]
 name=NFS Ganesha packages for \$basearch
-baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/\$basearch
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/el8/\$basearch
 enabled=1
 priority=2
 gpgcheck=1
@@ -942,7 +942,7 @@ gpgkey=https://download.ceph.com/keys/release.asc
 
 [nfs-ganesha-noarch]
 name=NFS Ganesha noarch packages
-baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/noarch
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/el8/noarch
 enabled=1
 priority=2
 gpgcheck=1
@@ -950,7 +950,7 @@ gpgkey=https://download.ceph.com/keys/release.asc
 
 [nfs-ganesha-source]
 name=NFS Ganesha source packages
-baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/SRPMS
+baseurl=https://download.ceph.com/nfs-ganesha/${ganesha_release}/${ceph_release}/el8/SRPMS
 enabled=0
 priority=2
 gpgcheck=1
