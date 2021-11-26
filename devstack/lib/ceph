@@ -697,6 +697,8 @@ function configure_ceph_glance {
             get-or-create client.${GLANCE_CEPH_USER} \
             mon "allow r" \
             osd "allow class-read object_prefix rbd_children, \
+            allow rx pool=${CINDER_CEPH_POOL}, \
+	    allow rx pool=${NOVA_CEPH_POOL}, \
             allow rwx pool=${GLANCE_CEPH_POOL}" | \
             sudo tee ${CEPH_CONF_DIR}/ceph.client.${GLANCE_CEPH_USER}.keyring
 
