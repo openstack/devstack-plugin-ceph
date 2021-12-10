@@ -893,6 +893,19 @@ function install_ceph_remote {
     if python3_enabled; then
         install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
     fi
+    # Since pip10, pip will refuse to uninstall files from packages
+    # that were created with distutils (rather than more modern
+    # setuptools).  This is because it technically doesn't have a
+    # manifest of what to remove.  However, in most cases, simply
+    # overwriting works.  So this hacks around those packages that
+    # have been dragged in by some other system dependency
+    if is_ubuntu; then
+        sudo rm -rf /usr/lib/python3/dist-packages/logutils*.egg-info
+    fi
+    if is_fedora; then
+        sudo rm -rf /usr/lib64/python3*/site-packages/logutils*.egg-info
+    fi
+
 }
 
 function dnf_add_repository_ceph {
@@ -1148,6 +1161,19 @@ function install_ceph {
     else
         die $LINENO "${os_VENDOR} is not supported by the Ceph plugin for Devstack"
     fi
+    # Since pip10, pip will refuse to uninstall files from packages
+    # that were created with distutils (rather than more modern
+    # setuptools).  This is because it technically doesn't have a
+    # manifest of what to remove.  However, in most cases, simply
+    # overwriting works.  So this hacks around those packages that
+    # have been dragged in by some other system dependency
+    if is_ubuntu; then
+        sudo rm -rf /usr/lib/python3/dist-packages/logutils*.egg-info
+    fi
+    if is_fedora; then
+        sudo rm -rf /usr/lib64/python3*/site-packages/logutils*.egg-info
+    fi
+
 }
 
 # start_ceph() - Start running processes, including screen
