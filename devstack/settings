@@ -23,8 +23,13 @@ CEPH_LOOPBACK_DISK_SIZE=${CEPH_LOOPBACK_DISK_SIZE:-$VOLUME_BACKING_FILE_SIZE}
 # Disable manage/unmanage snapshot tests on Tempest
 TEMPEST_VOLUME_MANAGE_SNAPSHOT=False
 
-# Source plugin's lib/ceph
-source $CEPH_PLUGIN_DIR/lib/ceph
+# Source plugin's lib/cephadm or lib/ceph
+# depending on chosen deployment method
+if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+    source $CEPH_PLUGIN_DIR/lib/cephadm
+else
+    source $CEPH_PLUGIN_DIR/lib/ceph
+fi
 
 # Set Manila related global variables used by Manila's DevStack plugin.
 if (is_ceph_enabled_for_service manila); then

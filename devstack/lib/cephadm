@@ -1,0 +1,723 @@
+#!/bin/bash
+#
+# lib/cephadm
+# Functions to control the configuration
+# and operation of the **Ceph** storage service
+# when deployed using the cephadm tool
+
+# ``stack.sh`` calls the entry points in this order:
+#
+# - pre_install_ceph
+# - install_ceph
+# - configure_ceph
+# - init_ceph
+# - cleanup_ceph # unstack || clean
+
+# Save trace setting
+XTRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+# GENERIC CEPHADM INTERNAL OPTIONS, DO NOT EDIT
+CEPH_RELEASE=${CEPH_RELEASE:-pacific}
+CEPH_PUB_KEY="/etc/ceph/ceph.pub"
+CEPH_CONFIG="/etc/ceph/ceph.conf"
+BOOTSTRAP_CONFIG="$HOME/bootstrap_ceph.conf"
+CEPH_KEYRING="/etc/ceph/ceph.client.admin.keyring"
+TARGET_BIN=/usr/bin
+# TOGGLED IN THE CI TO SAVE RESOURCES
+DISABLE_CEPHADM_POST_DEPLOY=${DISABLE_CEPHADM_POST_DEPLOY:-False}
+
+# DEFAULT OPTIONS
+ATTEMPTS=30
+CONTAINER_IMAGE=${CONTAINER_IMAGE:-'quay.io/ceph/ceph:v16.2.9'}
+DEVICES=()
+FSID=$(uuidgen)
+KEY_EXPORT_DIR="/etc/ceph"
+KEYS=("client.openstack") # at least the client.openstack default key should be created
+MIN_OSDS=1
+SERVICES=()
+SLEEP=5
+CEPHADM_DEV_OSD=${CEPHADM_DEV_OSD:-"True"}
+CEPH_LOOPBACK_DISK_SIZE=${CEPH_LOOPBACK_DISK_SIZE:-30G}
+TARGET_DEV_OSD_DIR=${TARGET_DEV_OSD_DIR:-"/opt/stack"}
+
+# POOLS
+DEFAULT_PG_NUM=${DEFAULT_PG_NUM:-8}
+DEFAULT_PGP_NUM=${DEFAULT_PGP_NUM:-8}
+
+# RGW OPTIONS
+RGW_PORT=8080
+
+# CLIENT CONFIG
+CEPH_CLIENT_CONFIG=$HOME/ceph_client.conf
+CEPH_CONF_DIR=${CEPH_CONF_DIR:-/etc/ceph}
+# The resulting client config pointed by the other clients
+CEPH_CONF_FILE=${CEPH_CONF_FILE:-$CEPH_CONF_DIR/ceph.conf}
+
+# LOG(s) and EXPORTED CONFIG FILES
+EXPORT=$HOME/ceph_export.yml
+RBD_CLIENT_LOG=/var/log/ceph/qemu-guest-\$pid.log
+
+# MANILA DEFAULTS
+MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
+
+# NFS OPTIONS
+FSNAME=${FSNAME:-'cephfs'}
+NFS_PORT=12345
+CEPHFS_CLIENT=0
+CEPHFS_CLIENT_NAME="client.$MANILA_CEPH_USER"
+CEPHFS_CLIENT_LOG="/var/log/ceph-$CEPHFS_CLIENT_NAME.log"
+CEPHFS_MULTIPLE_FILESYSTEMS=${CEPHFS_MULTIPLE_FILESYSTEMS:-False}
+
+
+# GLANCE DEFAULTS
+GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
+GLANCE_CEPH_POOL=${GLANCE_CEPH_POOL:-images}
+GLANCE_RGW_BACKEND=${GLANCE_RGW_BACKEND:-False}
+
+# Cinder DEFAULTS
+CINDER_CEPH_POOL=${CINDER_CEPH_POOL:-volumes}
+CINDER_CEPH_USER=${CINDER_CEPH_USER:-cinder}
+CINDER_CEPH_UUID=${CINDER_CEPH_UUID:-$(uuidgen)}
+# Enables new features such as Clone v2 API, which allows proper handling of
+# deleting snapshots with child clone images.
+CEPH_MIN_CLIENT_VERSION=${CEPH_MIN_CLIENT_VERSION:-mimic}
+
+# Cinder Backup DEFAULTS
+CINDER_BAK_CEPH_POOL=${CINDER_BAK_CEPH_POOL:-backups}
+CINDER_BAK_CEPH_USER=${CINDER_BAK_CEPH_USER:-cinder-bak}
+
+# Nova DEFAUTLS
+NOVA_CEPH_POOL=${NOVA_CEPH_POOL:-vms}
+
+[ -z "$SUDO" ] && SUDO=sudo
+
+## Admin
+
+# Admin: enable debug mode
+function set_debug {
+    if [ "$DEBUG" -eq 1 ]; then
+        echo "[CEPHADM] Enabling Debug mode"
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph config set mgr mgr/cephadm/log_to_cluster_level debug
+        echo "[CEPHADM] See debug logs running: ceph -W cephadm --watch-debug"
+    fi
+}
+
+# Admin: check ceph cluster status
+function check_cluster_status {
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph -s -f json-pretty
+}
+
+# Admin: export ceph cluster config spec
+function export_spec {
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph orch ls --export > "$EXPORT"
+    echo "Ceph cluster config exported: $EXPORT"
+}
+
+# Pre-install ceph: install podman
+function _install_podman {
+    # FIXME(vkmc) Check required for Ubuntu 20.04 LTS (current CI node)
+    # Remove when our CI is pushed to the next LTS version
+    if ! command -v podman &> /dev/null; then
+        if [[ $os_CODENAME =~ (focal) ]]; then
+            echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /" \
+                | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+            curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key" \
+                | sudo apt-key add -
+            sudo apt-get update
+            sudo apt-get -y upgrade
+        fi
+        install_package podman
+    fi
+}
+
+# Pre-install ceph: install required dependencies
+function install_deps {
+    install_package jq ceph-common
+    _install_podman
+    install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
+}
+
+# Pre-install ceph: get cephadm binary
+function get_cephadm {
+    curl -O https://raw.githubusercontent.com/ceph/ceph/"$CEPH_RELEASE"/src/cephadm/cephadm
+    $SUDO mv cephadm $TARGET_BIN
+    $SUDO chmod +x $TARGET_BIN/cephadm
+    echo "[GET CEPHADM] cephadm is now available"
+
+    if [ -z "$CEPHADM" ]; then
+        CEPHADM=${TARGET_BIN}/cephadm
+    fi
+}
+
+# Pre-install ceph: bootstrap config
+function bootstrap_config {
+    cat <<EOF > "$BOOTSTRAP_CONFIG"
+[global]
+log to file = true
+osd crush chooseleaf type = 0
+osd_pool_default_pg_num = 8
+osd_pool_default_pgp_num = 8
+osd_pool_default_size = 1
+[mon]
+mon_warn_on_pool_no_redundancy = False
+[osd]
+osd_memory_target_autotune = true
+osd_numa_auto_affinity = true
+[mgr]
+mgr/cephadm/autotune_memory_target_ratio = 0.2
+EOF
+}
+
+## Install
+
+# Install ceph: run cephadm bootstrap
+function start_ceph {
+    cluster=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid')
+    if [ -z "$cluster" ]; then
+    $SUDO $CEPHADM --image "$CONTAINER_IMAGE" \
+            bootstrap \
+            --fsid $FSID \
+            --config "$BOOTSTRAP_CONFIG" \
+            --output-config $CEPH_CONFIG \
+            --output-keyring $CEPH_KEYRING \
+            --output-pub-ssh-key $CEPH_PUB_KEY \
+            --allow-overwrite \
+            --allow-fqdn-hostname \
+            --skip-monitoring-stack \
+            --skip-dashboard \
+            --single-host-defaults \
+            --skip-firewalld \
+            --skip-mon-network \
+            --mon-ip "$HOST_IP"
+
+    test -e $CEPH_CONFIG
+    test -e $CEPH_KEYRING
+
+    if [ "$CEPHADM_DEV_OSD" == 'True' ]; then
+        create_osd_dev
+    fi
+    # Wait cephadm backend to be operational
+    # and add osds via drivegroups
+    sleep "$SLEEP"
+    add_osds
+    fi
+}
+
+# Install ceph: create a loopback device to be used as osd
+function create_osd_dev {
+    sudo dd if=/dev/zero of=$TARGET_DEV_OSD_DIR/ceph-osd.img bs=1 count=0 seek="$CEPH_LOOPBACK_DISK_SIZE"
+    osd_dev=$(sudo losetup -f --show $TARGET_DEV_OSD_DIR/ceph-osd.img)
+    sudo pvcreate $osd_dev
+    sudo vgcreate ceph_vg $osd_dev
+    sudo lvcreate -n ceph_lv_data -l +100%FREE ceph_vg
+    DEVICES+=("/dev/ceph_vg/ceph_lv_data")
+}
+
+# cleanup ceph: delete the osd file and release the loopback device
+function delete_osd_dev {
+    if [ $(sudo lvs --noheadings -o lv_path -S lv_name=ceph_lv_data) ]; then
+        sudo lvremove --force /dev/ceph_vg/ceph_lv_data
+        sudo vgremove --force ceph_vg
+        osd_dev=$(sudo losetup -j $TARGET_DEV_OSD_DIR/ceph-osd.img -l -n -O NAME)
+        sudo pvremove --force $osd_dev
+        sudo losetup -d $osd_dev
+        sudo rm -f $TARGET_DEV_OSD_DIR/ceph-osd.img
+        sudo partprobe
+        DEVICES=()
+    fi
+}
+
+# Install ceph: add osds
+function add_osds {
+    # let's add some osds
+    if [ -z "$DEVICES" ]; then
+        echo "Using ALL available devices"
+        $SUDO $CEPHADM shell ceph orch apply osd --all-available-devices
+    else
+        for item in "${DEVICES[@]}"; do
+            echo "Creating osd $item on node $HOSTNAME"
+            $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+                --keyring $CEPH_KEYRING -- ceph orch daemon add osd "$HOSTNAME:$item"
+        done
+    fi
+
+    while [ "$ATTEMPTS" -ne 0 ]; do
+        num_osds=$($SUDO $CEPHADM shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph -s -f json | jq '.osdmap | .num_up_osds')
+        if [ "$num_osds" -ge "$MIN_OSDS" ]; then
+            break;
+        fi
+        ATTEMPTS=$(("$ATTEMPTS" - 1))
+        sleep 1
+    done
+    echo "[CEPHADM] OSD(s) deployed: $num_osds"
+
+    # [ "$num_osds" -lt "$MIN_OSDS" ] && exit 255
+}
+
+# Install ceph: create and enable pools
+function add_pools {
+
+    [ "${#POOLS[@]}" -eq 0 ] && return;
+
+    for pool in "${POOLS[@]}"; do
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
+            "$DEFAULT_PGP_NUM" replicated --autoscale-mode on
+
+        # set the application to the pool (which also means rbd init the pool)
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph osd pool application enable "$pool" rbd
+    done
+}
+
+# Utility: build caps according to the generated pools
+function build_caps {
+    local CAPS=""
+    for pool in "${POOLS[@]}"; do
+        caps="allow rwx pool="$pool
+        CAPS+=$caps,
+    done
+    echo "${CAPS::-1}"
+}
+
+# Install ceph: create a keyring
+function _create_key {
+    local name=$1
+    local caps
+    local osd_caps
+
+    if [ "${#POOLS[@]}" -eq 0 ]; then
+        osd_caps="allow *"
+    else
+        caps=$(build_caps)
+        osd_caps="allow class-read object_prefix rbd_children, $caps"
+    fi
+
+    $SUDO "$CEPHADM" shell -v "$KEY_EXPORT_DIR:$KEY_EXPORT_DIR" --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph auth get-or-create "$name" mgr "allow rw" mon "allow r" osd "$osd_caps" \
+        -o "$KEY_EXPORT_DIR/ceph.$name.keyring"
+
+    $SUDO chown ${STACK_USER}:$(id -g -n $whoami) \
+        ${CEPH_CONF_DIR}/ceph.$name.keyring
+}
+
+# Install ceph: create one or more keyrings
+function create_keys {
+    for key_name in "${KEYS[@]}"; do
+        echo "Creating key $key_name"
+        _create_key "$key_name"
+    done
+}
+
+# Install ceph: add MDS
+function cephfs_config {
+    # Two pools are generated by this action
+    # - $FSNAME.FSNAME.data
+    # - $FSNAME.FSNAME.meta
+    # and the mds daemon is deployed
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph fs volume create "$FSNAME"
+}
+
+# Install ceph: add NFS
+function ceph_nfs_config {
+    # (fpantano) TODO: Build an ingress daemon on top of this
+    echo "[CEPHADM] Deploy nfs.$FSNAME backend"
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph orch apply nfs \
+        "$FSNAME" --placement="$HOSTNAME" --port $NFS_PORT
+}
+
+function _create_swift_endpoint {
+
+    local swift_service
+    swift_service=$(get_or_create_service "swift" "object-store" "Swift Service")
+
+    local swift_endpoint
+    swift_endpoint="$SWIFT_SERVICE_PROTOCOL://$SERVICE_HOST:${CEPH_RGW_PORT}/swift/v1"
+
+    get_or_create_endpoint $swift_service \
+        "$REGION_NAME" $swift_endpoint $swift_endpoint $swift_endpoint
+}
+
+# RGW pre config
+function configure_ceph_embedded_rgw {
+
+    # keystone endpoint for radosgw
+    _create_swift_endpoint
+
+    # Create radosgw service user with admin privileges
+    create_service_user "radosgw" "admin"
+
+    if [ "$CEPH_RGW_KEYSTONE_SSL" = "True" ]; then
+        # radosgw needs to access keystone's revocation list
+        sudo mkdir -p ${dest}/nss
+        sudo openssl x509 -in /etc/keystone/ssl/certs/ca.pem -pubkey | \
+            sudo certutil -d ${dest}/nss -A -n ca -t "TCu,Cu,Tuw"
+
+        sudo openssl x509 -in /etc/keystone/ssl/certs/signing_cert.pem -pubkey | \
+            sudo certutil -A -d ${dest}/nss -n signing_cert -t "P,P,P"
+    fi
+}
+
+# General Ceph utility to set config options within the monitor's config database
+function set_config_key {
+    local section=$1
+    local key=$2
+    local value=$3
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        ceph config set ${section} ${key} ${value}
+}
+
+# RGW config keys: no iniset anymore, everything is pushed as mgr key/value
+function configure_rgw_ceph_section {
+
+    # RGW KEYSTONE KEYS
+    declare -A RGW_CONFIG_KEYS
+
+    RGW_CONFIG_KEYS=(['rgw_keystone_api_version']=3
+        ['rgw_keystone_url']="$KEYSTONE_SERVICE_URI"
+        ['rgw_keystone_accepted_roles']="member, _member_, Member, admin"
+        ['rgw_keystone_accepted_admin_roles']="ResellerAdmin"
+        ['rgw_keystone_admin_domain']="$SERVICE_DOMAIN_NAME"
+        ['rgw_keystone_admin_project']="$SERVICE_PROJECT_NAME"
+        ['rgw_keystone_admin_user']="radosgw"
+        ['rgw_s3_auth_use_keystone']="true"
+        ['rgw_keystone_admin_password']="$SERVICE_PASSWORD"
+        ['rgw_keystone_verify_ssl']="false"
+        ['rgw_keystone_implicit_tenants']="true"
+        ['rgw_swift_versioning_enabled']="true"
+        ['rgw_swift_enforce_content_length']="true"
+        ['rgw_swift_account_in_url']="true"
+        ['rgw_trust_forwarded_https']="true"
+        ['rgw_max_attr_name_len']=128
+        ['rgw_max_attrs_num_in_req']=90
+        ['rgw_max_attr_size']=256
+    )
+
+    for k in ${!RGW_CONFIG_KEYS[@]}; do
+        set_config_key "global" ${k} ${RGW_CONFIG_KEYS[$k]}
+    done
+}
+
+# Install ceph: add RGW
+function rgw {
+    configure_ceph_embedded_rgw
+
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph orch apply rgw default default default default \
+        "--placement=$HOSTNAME count:1" --port "$RGW_PORT"
+
+    configure_rgw_ceph_section
+}
+
+# TODO: (fpantano) Remove this hack
+function start_ceph_embedded_rgw {
+    # noop
+    :
+}
+
+# Configure cephfs and ceph_nfs
+function configure_ceph_manila {
+    # Deploy mds and configure cephfs
+    cephfs_config
+    # Deploy and configure ganesha
+    [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ] && ceph_nfs_config
+    # Add manila keys to the list
+    KEYS+=("client.$MANILA_CEPH_USER")
+}
+
+# Install ceph: services deployment
+function enable_services {
+    for item in "${SERVICES[@]}"; do
+        case "$item" in
+            cephfs|CEPHFS)
+            echo "[CEPHADM] Config cephfs volume on node $HOSTNAME"
+            cephfs_config
+            CEPHFS_CLIENT=1
+            ;;
+            nfs|NFS)
+            echo "[CEPHADM] Deploying NFS on node $HOSTNAME"
+            ceph_nfs_config
+            CEPHFS_CLIENT=1
+            ;;
+            rgw|RGW)
+            echo "[CEPHADM] Deploying RGW on node $HOSTNAME"
+            rgw
+            ;;
+        esac
+    done
+}
+
+# Install ceph: client config
+function client_config {
+    echo "Dump the minimal ceph.conf"
+    cp $CEPH_CONFIG "$CEPH_CLIENT_CONFIG"
+
+    cat >> "$CEPH_CLIENT_CONFIG" <<-EOF
+[client.libvirt]
+admin socket = /var/run/ceph/\$cluster-\$type.\$id.\$pid.\$cctid.asok
+log file = $RBD_CLIENT_LOG
+EOF
+
+    if [ "$CEPHFS_CLIENT" -eq 1 ]; then
+        cat >> "$CEPH_CLIENT_CONFIG" <<-EOF
+[$CEPHFS_CLIENT_NAME]
+client mount uid = 0
+client mount gid = 0
+log file = $CEPHFS_CLIENT_LOG
+admin socket = /var/run/ceph/\$cluster-\$type.\$id.\$pid.\$cctid.asok
+keyring = $KEY_EXPORT_DIR/ceph.$CEPHFS_CLIENT_NAME.keyring
+EOF
+        echo "Client config exported: $CEPH_CLIENT_CONFIG"
+    fi
+
+    # Nova resolves the keyring using the pattern $cluster.conf
+    # For this reason we need to override the content of the
+    # generated (minimal) ceph.conf with the client part.
+    $SUDO cp $CEPH_CLIENT_CONFIG $CEPH_CONF_FILE
+}
+
+## Remove ceph
+
+# Remove ceph: remove cluster and zap osds
+function stop_ceph {
+    local cluster_deleted
+    local timeout
+
+    if ! [ -x "$CEPHADM" ]; then
+        get_cephadm
+        CEPHADM=${TARGET_BIN}/cephadm
+    fi
+
+    cluster_deleted=0
+    timeout=3
+    while : ; do
+        CLUSTER_FSID=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid' | tr -d \")
+        if [[ -n "$CLUSTER_FSID" ]]; then
+            sudo cephadm rm-cluster --zap-osds --fsid $CLUSTER_FSID --force
+        else
+            cluster_deleted=1
+            echo "[CEPHADM] Cluster deleted"
+        fi
+        $(( timeout-- ))
+
+        [[ "$cluster_deleted" -eq 0 && "$timeout" -eq 0 ]] && \
+            echo "[CEPHADM] Error deleting the cluster" && exit 255
+        [[ "$cluster_deleted" -eq 1 || "$timeout" -eq 0 ]] && break
+    done
+}
+
+## devstack-plugin-ceph functions
+
+function pre_install_ceph {
+    # Check dependencies for the service.
+    install_deps
+}
+
+function install_ceph {
+    # Install the service.
+    bootstrap_config
+    get_cephadm
+    start_ceph
+}
+
+function config_glance {
+    if [[ "$GLANCE_RGW_BACKEND" = "True" && "$ENABLE_CEPH_RGW" = "True" ]]; then
+        # common glance accounts for swift
+        create_service_user "glance-swift" "ResellerAdmin"
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 user $SERVICE_PROJECT_NAME:glance-swift
+
+        AUTH_URL=$KEYSTONE_SERVICE_URI/v$CEPH_RGW_IDENTITY_API_VERSION
+
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 key $SERVICE_PASSWORD
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_address $AUTH_URL
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 user_domain_name $SERVICE_DOMAIN_NAME
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 project_domain_name $SERVICE_DOMAIN_NAME
+        iniset $GLANCE_SWIFT_STORE_CONF ref1 auth_version $CEPH_RGW_IDENTITY_API_VERSION
+        if [[ "$GLANCE_ENABLE_MULTIPLE_STORES" == "True" ]]; then
+            # NOTE(abhishekk): As this is all in one setup there will be only
+            # one swift instance available even if glance multiple store is enabled.
+            # We are assuming the store name as `swift_store`.
+            iniset $GLANCE_API_CONF glance_store default_backend "swift_store"
+            iniset $GLANCE_API_CONF "swift_store" swift_store_create_container_on_put True
+            iniset $GLANCE_API_CONF "swift_store" swift_store_config_file $GLANCE_SWIFT_STORE_CONF
+            iniset $GLANCE_API_CONF "swift_store" default_swift_reference ref1
+        else
+            iniset $GLANCE_API_CONF glance_store default_store swift
+            iniset $GLANCE_API_CONF glance_store swift_store_create_container_on_put True
+            iniset $GLANCE_API_CONF glance_store swift_store_config_file $GLANCE_SWIFT_STORE_CONF
+            iniset $GLANCE_API_CONF glance_store default_swift_reference ref1
+            iniset $GLANCE_API_CONF glance_store stores "file, http, swift"
+        fi
+    else
+        iniset $GLANCE_API_CONF DEFAULT show_multiple_locations True
+        if [[ "$GLANCE_ENABLE_MULTIPLE_STORES" == "True" ]]; then
+            # NOTE(abhishekk): As this is all in one setup there will be only
+            # one rbd instance available even if glance multiple store is enabled.
+            # We are assuming the store name as `robust_rbd`. Also we will set another
+            # file store 'fast' along with it as old setup also used to configure file
+            # store when rbd is enabled.
+            iniset $GLANCE_API_CONF DEFAULT enabled_backends "robust_rbd:rbd,fast:file"
+            iniset $GLANCE_API_CONF glance_store default_backend robust_rbd
+            iniset $GLANCE_API_CONF "robust_rbd" rbd_store_ceph_conf $CEPH_CONF_FILE
+            iniset $GLANCE_API_CONF "robust_rbd" rbd_store_user $GLANCE_CEPH_USER
+            iniset $GLANCE_API_CONF "robust_rbd" rbd_store_pool $GLANCE_CEPH_POOL
+        else
+            iniset $GLANCE_API_CONF glance_store default_store rbd
+            iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
+            iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
+            iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
+            iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
+        fi
+    fi
+}
+
+function config_nova {
+    iniset $NOVA_CONF libvirt rbd_user ${CINDER_CEPH_USER}
+    iniset $NOVA_CONF libvirt rbd_secret_uuid ${CINDER_CEPH_UUID}
+    iniset $NOVA_CONF libvirt inject_key false
+    iniset $NOVA_CONF libvirt inject_partition -2
+    iniset $NOVA_CONF libvirt disk_cachemodes "network=writeback"
+    iniset $NOVA_CONF libvirt images_type rbd
+    iniset $NOVA_CONF libvirt images_rbd_pool ${NOVA_CEPH_POOL}
+    iniset $NOVA_CONF libvirt images_rbd_ceph_conf ${CEPH_CONF_FILE}
+}
+
+function set_min_client_version {
+    if [ ! -z "$CEPH_MIN_CLIENT_VERSION" ]; then
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph osd set-require-min-compat-client ${CEPH_MIN_CLIENT_VERSION}
+    fi
+}
+
+# import_libvirt_secret_ceph() - Imports Cinder user key into libvirt
+# so it can connect to the Ceph cluster while attaching a Cinder block device
+function import_libvirt_secret_ceph {
+
+    [ "$ENABLE_CEPH_NOVA" == "False" ] && return;
+
+    NOVA_VIRSH_SECRET=$($SUDO cat ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring | awk '/key/ {print $3}')
+    cat <<EOF | sudo tee secret.xml>/dev/null
+    <secret ephemeral='no' private='no'>
+    <uuid>${CINDER_CEPH_UUID}</uuid>
+    <usage type='ceph'>
+        <name>client.${CINDER_CEPH_USER} secret</name>
+    </usage>
+    </secret>
+EOF
+    $SUDO virsh secret-define --file secret.xml # 2>/dev/null
+    $SUDO virsh secret-set-value --secret ${CINDER_CEPH_UUID} \
+        --base64 ${NOVA_VIRSH_SECRET} # 2>/dev/null
+
+    $SUDO rm -f secret.xml
+}
+
+# _undefine_virsh_secret() - Undefine Cinder key secret from libvirt
+function _undefine_virsh_secret {
+    local virsh_uuid
+    virsh_uuid=$($SUDO virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }')
+    echo $virsh_uuid
+    $SUDO virsh secret-undefine ${virsh_uuid} &>/dev/null
+}
+
+function configure_ceph {
+
+    if is_ceph_enabled_for_service manila; then
+        SERVICES+=('cephfs')
+        KEYS+=("client.$MANILA_CEPH_USER")
+    fi
+
+    [ "$MANILA_CEPH_DRIVER" == "cephfsnfs" ] && SERVICES+=('nfs')
+
+    if is_ceph_enabled_for_service glance; then
+        POOLS+=($GLANCE_CEPH_POOL)
+        KEYS+=("client.$GLANCE_CEPH_USER")
+        config_glance
+    fi
+
+    if is_ceph_enabled_for_service cinder; then
+        POOLS+=($CINDER_CEPH_POOL)
+        KEYS+=("client.$CINDER_CEPH_USER")
+        set_min_client_version
+    fi
+
+    if is_ceph_enabled_for_service c-bak; then
+        POOLS+=($CINDER_BAK_CEPH_POOL)
+        KEYS+=("client.$CINDER_BAK_CEPH_USER")
+    fi
+
+    if is_ceph_enabled_for_service nova; then
+        POOLS+=($NOVA_CEPH_POOL)
+        KEYS+=("client.$CINDER_CEPH_USER")
+        config_nova
+    fi
+
+    [ "$ENABLE_CEPH_RGW" == "True" ] && SERVICES+=('rgw')
+
+    enable_services
+    add_pools
+    create_keys
+    client_config
+    import_libvirt_secret_ceph
+
+    if [[ "$DISABLE_CEPHADM_POST_DEPLOY" == "True" ]]; then
+        disable_cephadm
+    fi
+}
+
+# Hack: remove this function at some point
+function configure_ceph_manila {
+    # noop
+    :
+}
+
+function cleanup_ceph {
+    # Cleanup the service.
+    stop_ceph
+    delete_osd_dev
+    # purge ceph config file and keys
+    $SUDO rm -f ${CEPH_CONF_DIR}/*
+    if is_ceph_enabled_for_service nova; then
+    _undefine_virsh_secret
+    fi
+}
+
+function disable_cephadm {
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph orch set backend
+
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph mgr module disable cephadm
+}
+
+# is_ceph_enabled_for_service() - checks whether the OpenStack service
+# specified as an argument is enabled with Ceph as its storage backend.
+function is_ceph_enabled_for_service {
+    local config config_name enabled service
+    enabled=1
+    service=$1
+    # Construct the global variable ENABLE_CEPH_.* corresponding to a
+    # $service.
+    config_name=ENABLE_CEPH_$(echo $service | \
+        tr '[:lower:]' '[:upper:]' | tr '-' '_')
+    config=$(eval echo "\$$config_name")
+
+    if (is_service_enabled $service) && [[ $config == 'True' ]]; then
+        enabled=0
+    fi
+    return $enabled
+}
+
+# Restore xtrace
+$XTRACE
+
+# Tell emacs to use shell-script-mode
+## Local variables:
+## mode: shell-script
+## End:

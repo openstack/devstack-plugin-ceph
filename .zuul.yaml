@@ -46,6 +46,17 @@
         CEPH_RELEASE: "pacific"
 
 - job:
+    name: devstack-plugin-ceph-tempest-cephadm
+    parent: devstack-plugin-ceph-tempest-py3-base
+    description: |
+      Integration tests that runs with the ceph devstack plugin and py3.
+      The ceph cluster is deployed using cephadm
+    vars:
+      tempest_concurrency: 1
+      devstack_localrc:
+        CEPHADM_DEPLOY: true
+
+- job:
     name: devstack-plugin-ceph-compute-local-ephemeral
     parent: devstack-plugin-ceph-tempest-py3-base
     description: |
@@ -133,6 +144,19 @@
       devstack_localrc:
         TEST_MASTER: true
 
+- job:
+    name: devstack-plugin-ceph-multinode-tempest-cephadm
+    parent: devstack-plugin-ceph-multinode-tempest-py3
+    description: |
+      Integration tests that runs the ceph device plugin across multiple
+      nodes on py3.
+      The ceph deployment strategy used by this job is cephadm.
+    vars:
+      devstack_localrc:
+        USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
+        CEPHADM_DEPLOY: true
+      tempest_concurrency: 1
+
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -140,6 +164,8 @@
     check:
       jobs:
         - devstack-plugin-ceph-tempest-py3
+        - devstack-plugin-ceph-tempest-cephadm:
+            voting: false
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
@@ -148,6 +174,8 @@
             voting: false
         - devstack-plugin-ceph-tempest-fedora-latest
         - devstack-plugin-ceph-multinode-tempest-py3
+        - devstack-plugin-ceph-multinode-tempest-cephadm:
+            voting: false
         - devstack-plugin-ceph-master-tempest:
             voting: false
     gate:
