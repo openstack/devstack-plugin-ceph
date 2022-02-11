@@ -25,6 +25,9 @@
         TEMPEST_RUN_VALIDATION: false
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
+      devstack_services:
+        # Disable horizon (inherited from the parent, not needed by the tests executed here)
+        horizon: false
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
@@ -104,6 +107,9 @@
         CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
+      devstack_services:
+        # Disable horizon (inherited from the parent, not needed by the tests executed here)
+        horizon: false
       tox_envlist: all
       tempest_plugins:
         - cinder-tempest-plugin
