@@ -10,7 +10,8 @@
       The original job included support for an un-used tempest-dsvm-ceph-rc
       hosted at /opt/stack/new/nova/devstack/tempest-dsvm-ceph-rc.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: opendev.org/openstack/cinder-tempest-plugin
+        override-checkout: 1.3.0
       - openstack/devstack-plugin-ceph
     irrelevant-files: &irrelevant-files
       - ^.*\.rst$
