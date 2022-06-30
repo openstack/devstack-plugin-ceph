@@ -2,93 +2,115 @@
 
 if [[ "$1" == "source" ]]; then
     # Initial source
-    source $TOP_DIR/lib/ceph
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        source $TOP_DIR/lib/cephadm
+    else
+        source $TOP_DIR/lib/ceph
+    fi
 elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
     if [[ "$ENABLE_CEPH_RGW" = "True" ]] && (is_service_enabled swift); then
         die $LINENO \
         "You cannot activate both Swift and Ceph Rados Gateway, \
         please disable Swift or set ENABLE_CEPH_RGW=False"
     fi
-    echo_summary "Installing Ceph"
-    check_os_support_ceph
-    if [ "$REMOTE_CEPH" = "False" ]; then
-        if [ "$CEPH_CONTAINERIZED" = "True" ]; then
-            echo_summary "Configuring and initializing Ceph"
-            deploy_containerized_ceph
-        else
-            install_ceph
-            echo_summary "Configuring Ceph"
-            configure_ceph
-            # NOTE (leseb): we do everything here
-            # because we need to have Ceph started before the main
-            # OpenStack components.
-            # Ceph OSD must start here otherwise we can't upload any images.
-            echo_summary "Initializing Ceph"
-            start_ceph
-        fi
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        # Set up system services
+        echo_summary "[cephadm] Configuring system services ceph"
+        pre_install_ceph
     else
-        install_ceph_remote
+        echo_summary "Installing Ceph"
+        check_os_support_ceph
+        if [ "$REMOTE_CEPH" = "False" ]; then
+            if [ "$CEPH_CONTAINERIZED" = "True" ]; then
+                echo_summary "Configuring and initializing Ceph"
+                deploy_containerized_ceph
+            else
+                install_ceph
+                echo_summary "Configuring Ceph"
+                configure_ceph
+                # NOTE (leseb): we do everything here
+                # because we need to have Ceph started before the main
+                # OpenStack components.
+                # Ceph OSD must start here otherwise we can't upload any images.
+                echo_summary "Initializing Ceph"
+                start_ceph
+            fi
+        else
+            install_ceph_remote
+        fi
     fi
 elif [[ "$1" == "stack" && "$2" == "install" ]]; then
-    # FIXME(melwitt): This is a hack to get around a namespacing issue with
-    # Paste and PasteDeploy. For stable/queens, we use the Pike UCA packages
-    # and the Ceph packages in the Pike UCA are pulling in python-paste and
-    # python-pastedeploy packages. The python-pastedeploy package satisfies the
-    # upper-constraints but python-paste does not, so devstack pip installs a
-    # newer version of it, while python-pastedeploy remains. The mismatch
-    # between the install path of paste and paste.deploy causes Keystone to
-    # fail to start, with "ImportError: cannot import name deploy."
-    if [[ "$TARGET_BRANCH" == stable/queens || "$TARGET_BRANCH" == master ]]; then
-        pip_install -U --force PasteDeploy
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        # Perform installation of service source
+        echo_summary "[cephadm] Installing ceph"
+        install_ceph
+    else
+        # FIXME(melwitt): This is a hack to get around a namespacing issue with
+        # Paste and PasteDeploy. For stable/queens, we use the Pike UCA packages
+        # and the Ceph packages in the Pike UCA are pulling in python-paste and
+        # python-pastedeploy packages. The python-pastedeploy package satisfies the
+        # upper-constraints but python-paste does not, so devstack pip installs a
+        # newer version of it, while python-pastedeploy remains. The mismatch
+        # between the install path of paste and paste.deploy causes Keystone to
+        # fail to start, with "ImportError: cannot import name deploy."
+        if [[ "$TARGET_BRANCH" == stable/queens || "$TARGET_BRANCH" == master ]]; then
+            pip_install -U --force PasteDeploy
+        fi
     fi
 elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
-    if is_ceph_enabled_for_service glance; then
-        echo_summary "Configuring Glance for Ceph"
-        configure_ceph_glance
-    fi
-    if is_ceph_enabled_for_service nova; then
-        echo_summary "Configuring Nova for Ceph"
-        configure_ceph_nova
-    fi
-    if is_ceph_enabled_for_service cinder; then
-        echo_summary "Configuring Cinder for Ceph"
-        configure_ceph_cinder
-    fi
-    if is_ceph_enabled_for_service nova; then
-        # NOTE (leseb): the part below is a requirement
-        # to attach Ceph block devices
-        echo_summary "Configuring libvirt secret"
-        import_libvirt_secret_ceph
-    fi
-    if is_ceph_enabled_for_service manila; then
-        echo_summary "Configuring Manila for Ceph"
-        configure_ceph_manila
-    fi
-
-    if [ "$REMOTE_CEPH" = "False" ]; then
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        # Configure after the other layer 1 and 2 services have been configured
+        echo_summary "[cephadm] Configuring additional Ceph services"
+        configure_ceph
+    else
         if is_ceph_enabled_for_service glance; then
             echo_summary "Configuring Glance for Ceph"
-            configure_ceph_embedded_glance
+            configure_ceph_glance
         fi
         if is_ceph_enabled_for_service nova; then
             echo_summary "Configuring Nova for Ceph"
-            configure_ceph_embedded_nova
+            configure_ceph_nova
         fi
         if is_ceph_enabled_for_service cinder; then
             echo_summary "Configuring Cinder for Ceph"
-            configure_ceph_embedded_cinder
+            configure_ceph_cinder
+        fi
+        if is_ceph_enabled_for_service nova; then
+            # NOTE (leseb): the part below is a requirement
+            # to attach Ceph block devices
+            echo_summary "Configuring libvirt secret"
+            import_libvirt_secret_ceph
         fi
         if is_ceph_enabled_for_service manila; then
             echo_summary "Configuring Manila for Ceph"
-            configure_ceph_embedded_manila
+            configure_ceph_manila
         fi
-        if [ "$ENABLE_CEPH_RGW" = "True" ]; then
-            echo_summary "Configuring Rados Gateway with Keystone for Swift"
-            configure_ceph_embedded_rgw
-            if [ "$CEPH_CONTAINERIZED" = "False" ]; then
-                start_ceph_embedded_rgw
-            else
-                _configure_ceph_rgw_container
+
+        if [ "$REMOTE_CEPH" = "False" ]; then
+            if is_ceph_enabled_for_service glance; then
+                echo_summary "Configuring Glance for Ceph"
+                configure_ceph_embedded_glance
+            fi
+            if is_ceph_enabled_for_service nova; then
+                echo_summary "Configuring Nova for Ceph"
+                configure_ceph_embedded_nova
+            fi
+            if is_ceph_enabled_for_service cinder; then
+                echo_summary "Configuring Cinder for Ceph"
+                configure_ceph_embedded_cinder
+            fi
+            if is_ceph_enabled_for_service manila; then
+                echo_summary "Configuring Manila for Ceph"
+                configure_ceph_embedded_manila
+            fi
+            if [ "$ENABLE_CEPH_RGW" = "True" ]; then
+                echo_summary "Configuring Rados Gateway with Keystone for Swift"
+                configure_ceph_embedded_rgw
+                if [ "$CEPH_CONTAINERIZED" = "False" ]; then
+                    start_ceph_embedded_rgw
+                else
+                    _configure_ceph_rgw_container
+                fi
             fi
         fi
     fi
@@ -123,24 +145,32 @@ fi
 
 
 if [[ "$1" == "unstack" ]]; then
-    if [ "$CEPH_CONTAINERIZED" = "False" ]; then
-        if [ "$REMOTE_CEPH" = "True" ]; then
-            cleanup_ceph_remote
-        else
-            stop_ceph
-            cleanup_ceph_embedded
-        fi
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        cleanup_ceph
     else
-        cleanup_containerized_ceph
+        if [ "$CEPH_CONTAINERIZED" = "False" ]; then
+            if [ "$REMOTE_CEPH" = "True" ]; then
+                cleanup_ceph_remote
+            else
+                stop_ceph
+                cleanup_ceph_embedded
+            fi
+        else
+            cleanup_containerized_ceph
+        fi
+        cleanup_ceph_general
     fi
-    cleanup_ceph_general
 fi
 
 if [[ "$1" == "clean" ]]; then
-    if [ "$REMOTE_CEPH" = "True" ]; then
-        cleanup_ceph_remote
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        cleanup_ceph
     else
-        cleanup_ceph_embedded
+        if [ "$REMOTE_CEPH" = "True" ]; then
+            cleanup_ceph_remote
+        else
+            cleanup_ceph_embedded
+        fi
+        cleanup_ceph_general
     fi
-    cleanup_ceph_general
 fi

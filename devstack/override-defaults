@@ -18,3 +18,5 @@ if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
         CINDER_ENABLED_BACKENDS=${CINDER_ENABLED_BACKENDS:-ceph}
     fi
 fi
+
+CEPHADM_DEPLOY=$(trueorfalse False CEPHADM_DEPLOY)
