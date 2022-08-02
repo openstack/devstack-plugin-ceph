@@ -159,8 +159,6 @@ function bootstrap_config {
 [global]
 log to file = true
 osd crush chooseleaf type = 0
-osd_pool_default_pg_num = 8
-osd_pool_default_pgp_num = 8
 osd_pool_default_size = 1
 [mon]
 mon_warn_on_pool_no_redundancy = False
