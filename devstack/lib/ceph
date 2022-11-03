@@ -273,11 +273,11 @@ function _undefine_virsh_secret {
 
 # check_os_support_ceph() - Check if the OS provides a decent version of Ceph
 function check_os_support_ceph {
-    if [[ ! ${DISTRO} =~ (focal|bionic|xenial|f31|f32|f33|f34|rhel8) ]]; then
+    if [[ ! ${DISTRO} =~ (jammy|focal|bionic|xenial|f31|f32|f33|f34|rhel8) ]]; then
         echo "WARNING: your distro $DISTRO does not provide \
             (at least) the Luminous release. \
-            Please use Ubuntu Xenial, Ubuntu Bionic, Ubuntu Focal, Fedora 31-34,
-            or CentOS Stream 8."
+            Please use Ubuntu Xenial, Ubuntu Bionic, Ubuntu Focal, Ubuntu Jammy, \
+            Fedora 31-34 or CentOS Stream 8."
         if [[ "$FORCE_CEPH_INSTALL" != "yes" ]]; then
             die $LINENO "If you wish to install Ceph on this distribution \
                 anyway run with FORCE_CEPH_INSTALL=yes, \
@@ -1110,14 +1110,20 @@ function setup_packages_for_manila_on_fedora_family {
 function install_ceph {
 
     if is_ubuntu; then
-        if ! [[ $os_CODENAME =~ (focal|xenial|bionic) ]]; then
-            die $LINENO "Supported for Ubuntu Xenial, Bionic or Focal. Not supported for other releases."
+        if ! [[ $os_CODENAME =~ (jammy|focal|xenial|bionic) ]]; then
+            die $LINENO "Supported for Ubuntu Xenial, Bionic, Focal or Jammy. \
+                         Not supported for other releases."
         fi
 
         # NOTE(vkmc) Dependencies for setting up repos
         install_package software-properties-common
 
-        configure_repo_ceph "apt-get" "$CEPH_RELEASE" "$os_CODENAME"
+        # NOTE(noonedeadpunk): There're no community repos for Ubuntu Jammy yet
+        #                      but Ceph Quincy is provided from default
+        #                      Ubuntu 22.04 repos.
+        if ! [[ $os_CODENAME =~ (jammy) ]]; then
+            configure_repo_ceph "apt-get" "$CEPH_RELEASE" "$os_CODENAME"
+        fi
 
         CEPH_PACKAGES="ceph libnss3-tools"
         if python3_enabled; then
