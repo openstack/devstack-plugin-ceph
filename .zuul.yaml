@@ -2,6 +2,9 @@
     name: devstack-plugin-ceph-tempest-py3-base
     abstract: true
     parent: tempest-full-py3
+    # TODO: Remove the nodeset pinning to focal once below bug is fixed
+    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
+    nodeset: openstack-single-node-focal
     description: |
       Base integration tests that runs with the ceph devstack plugin and py3.
       Former names for this job where:
@@ -105,6 +108,9 @@
     description: |
       Integration tests that runs the ceph device plugin across multiple
       nodes on py3.
+    # TODO: Remove the nodeset pinning to focal once below bug is fixed
+    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
+    nodeset: openstack-two-node-focal
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
@@ -163,24 +169,25 @@
       Runs devstack-plugin-ceph-tempest jobs.
     check:
       jobs:
-        - devstack-plugin-ceph-tempest-py3
+        - devstack-plugin-ceph-tempest-py3:
+            voting: false
         - devstack-plugin-ceph-tempest-cephadm:
             voting: false
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
-        - devstack-plugin-ceph-cephfs-nfs:
-            irrelevant-files: *irrelevant-files
-            voting: false
-        - devstack-plugin-ceph-tempest-fedora-latest
-        - devstack-plugin-ceph-multinode-tempest-py3
-        - devstack-plugin-ceph-multinode-tempest-cephadm:
-            voting: false
-        - devstack-plugin-ceph-master-tempest:
-            voting: false
-    gate:
-      jobs:
-        - devstack-plugin-ceph-tempest-py3
+        # - devstack-plugin-ceph-cephfs-nfs:
+        #     irrelevant-files: *irrelevant-files
+        #     voting: false
+        # - devstack-plugin-ceph-tempest-fedora-latest
+        # - devstack-plugin-ceph-multinode-tempest-py3
+        # - devstack-plugin-ceph-multinode-tempest-cephadm:
+        #     voting: false
+        # - devstack-plugin-ceph-master-tempest:
+        #     voting: false
+    # gate:
+    #   jobs:
+    #     - devstack-plugin-ceph-tempest-py3
 
 - project:
     templates:
