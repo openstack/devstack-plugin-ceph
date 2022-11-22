@@ -2,9 +2,6 @@
     name: devstack-plugin-ceph-tempest-py3-base
     abstract: true
     parent: tempest-full-py3
-    # TODO: Remove the nodeset pinning to focal once below bug is fixed
-    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
-    nodeset: openstack-single-node-focal
     description: |
       Base integration tests that runs with the ceph devstack plugin and py3.
       Former names for this job where:
@@ -21,11 +18,14 @@
       - ^tox.ini$
     timeout: 7200
     vars:
+      configure_swap_size: 8192
+      tempest_concurrency: 3
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
         ENABLE_VOLUME_MULTIATTACH: false
-        TEMPEST_RUN_VALIDATION: false
+        TEMPEST_RUN_VALIDATION: True
+        MYSQL_REDUCE_MEMORY: True
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       devstack_services:
@@ -37,26 +37,26 @@
       tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
-    name: devstack-plugin-ceph-tempest-py3
+    name: devstack-plugin-ceph-tempest-ubuntu
     parent: devstack-plugin-ceph-tempest-py3-base
     description: |
-      Integration tests that runs with the ceph devstack plugin and py3.
+      Integration tests that runs with the ceph devstack plugin using ceph
+      packages from the distro.
 
       This job enable the multiattach feature enable from stein on.
     vars:
       devstack_localrc:
         ENABLE_VOLUME_MULTIATTACH: true
-        CEPH_RELEASE: "pacific"
 
 - job:
-    name: devstack-plugin-ceph-tempest-cephadm
+    name: devstack-plugin-ceph-tempest-py3
     parent: devstack-plugin-ceph-tempest-py3-base
     description: |
-      Integration tests that runs with the ceph devstack plugin and py3.
-      The ceph cluster is deployed using cephadm
+      Integration tests that runs with the ceph devstack plugin using ceph
+      deployed using cephadm.
     vars:
-      tempest_concurrency: 1
       devstack_localrc:
+        DISABLE_CEPHADM_POST_DEPLOY: True
         CEPHADM_DEPLOY: true
 
 - job:
@@ -124,9 +124,6 @@
     description: |
       Integration tests that runs the ceph device plugin across multiple
       nodes on py3.
-    # TODO: Remove the nodeset pinning to focal once below bug is fixed
-    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
-    nodeset: openstack-two-node-focal
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
@@ -185,9 +182,8 @@
       Runs devstack-plugin-ceph-tempest jobs.
     check:
       jobs:
-        - devstack-plugin-ceph-tempest-py3:
-            voting: false
-        - devstack-plugin-ceph-tempest-cephadm:
+        - devstack-plugin-ceph-tempest-py3
+        - devstack-plugin-ceph-tempest-ubuntu:
             voting: false
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
@@ -201,9 +197,9 @@
         #     voting: false
         # - devstack-plugin-ceph-master-tempest:
         #     voting: false
-    # gate:
-    #   jobs:
-    #     - devstack-plugin-ceph-tempest-py3
+    gate:
+      jobs:
+        - devstack-plugin-ceph-tempest-py3
 
 - project:
     templates:
