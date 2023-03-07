@@ -99,18 +99,23 @@
     parent: tempest-multinode-full-py3
     description: |
       Integration tests that runs the ceph device plugin across multiple
-      nodes on py3.
+      nodes on py3. The Ceph deployment strategy used by this job is Cephadm.
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
     timeout: 10800
-    voting: false
     vars:
+      configure_swap_size: 8192
+      tempest_concurrency: 3
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         ENABLE_VOLUME_MULTIATTACH: true
         TEMPEST_RUN_VALIDATION: true
         USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
+        CEPHADM_DEPLOY: True
+        DISABLE_CEPHADM_POST_DEPLOY: True
+        MYSQL_REDUCE_MEMORY: True
+        REMOTE_CEPH: False
         CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
@@ -126,7 +131,8 @@
     group-vars:
       subnode:
         devstack_localrc:
-          REMOTE_CEPH: true
+          REMOTE_CEPH: True
+          CEPHADM_DEPLOY: True
           CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
 
 - job:
@@ -140,19 +146,6 @@
       devstack_localrc:
         TEST_MASTER: true
 
-- job:
-    name: devstack-plugin-ceph-multinode-tempest-cephadm
-    parent: devstack-plugin-ceph-multinode-tempest-py3
-    description: |
-      Integration tests that runs the ceph device plugin across multiple
-      nodes on py3.
-      The ceph deployment strategy used by this job is cephadm.
-    vars:
-      devstack_localrc:
-        USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
-        CEPHADM_DEPLOY: true
-      tempest_concurrency: 1
-
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -162,15 +155,13 @@
         - devstack-plugin-ceph-tempest-py3
         - devstack-plugin-ceph-tempest-ubuntu:
             voting: false
+        - devstack-plugin-ceph-multinode-tempest-py3
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
         - devstack-plugin-ceph-cephfs-nfs:
             irrelevant-files: *irrelevant-files
             voting: false
-        # - devstack-plugin-ceph-multinode-tempest-py3
-        # - devstack-plugin-ceph-multinode-tempest-cephadm:
-        #     voting: false
         # - devstack-plugin-ceph-master-tempest:
         #     voting: false
     gate:

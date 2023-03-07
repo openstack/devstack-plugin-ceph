@@ -31,7 +31,11 @@ DISABLE_CEPHADM_POST_DEPLOY=${DISABLE_CEPHADM_POST_DEPLOY:-False}
 ATTEMPTS=30
 CONTAINER_IMAGE=${CONTAINER_IMAGE:-'quay.io/ceph/ceph:v17.2.3'}
 DEVICES=()
-FSID=$(uuidgen)
+if [[ "$REMOTE_CEPH" = "False" ]]; then
+    FSID=$(uuidgen)
+else
+    FSID=$(cat $CEPH_CONFIG | grep fsid | awk 'BEGIN { RS = "fsid = "} ; { print $0 }' - )
+fi
 KEY_EXPORT_DIR="/etc/ceph"
 KEYS=("client.openstack") # at least the client.openstack default key should be created
 MIN_OSDS=1
@@ -117,36 +121,16 @@ function export_spec {
     echo "Ceph cluster config exported: $EXPORT"
 }
 
-# Pre-install ceph: install podman
-function _install_podman {
-    # FIXME(vkmc) Check required for Ubuntu 20.04 LTS (current CI node)
-    # Remove when our CI is pushed to the next LTS version
-    if ! command -v podman &> /dev/null; then
-        if [[ $os_CODENAME =~ (focal) ]]; then
-            echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /" \
-                | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-            curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key" \
-                | sudo apt-key add -
-            sudo apt-get update
-            sudo apt-get -y upgrade
-        fi
-        install_package podman
-    fi
-}
-
 # Pre-install ceph: install required dependencies
 function install_deps {
-    install_package jq ceph-common
-    _install_podman
-    install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
+    if [[ "$REMOTE_CEPH" == "False" ]]; then
+        install_package python3-cephfs python3-prettytable python3-rados python3-rbd python3-requests
+    fi
 }
 
 # Pre-install ceph: get cephadm binary
 function get_cephadm {
-    # NOTE(gouthamr): cephadm binary here is a python executable, and the
-    # $os_PACKAGE ("rpm") or $os_release (el9) doesn't really matter. There is
-    # no ubuntu/debian equivalent being published by the ceph community.
-    curl -O https://download.ceph.com/rpm-${CEPH_RELEASE}/el9/noarch/cephadm
+    curl -O https://raw.githubusercontent.com/ceph/ceph/"$CEPH_RELEASE"/src/cephadm/cephadm
     $SUDO mv cephadm $TARGET_BIN
     $SUDO chmod +x $TARGET_BIN/cephadm
     echo "[GET CEPHADM] cephadm is now available"
@@ -179,7 +163,7 @@ EOF
 function start_ceph {
     cluster=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid')
     if [ -z "$cluster" ]; then
-    $SUDO $CEPHADM --image "$CONTAINER_IMAGE" \
+        $SUDO "$CEPHADM" --image "$CONTAINER_IMAGE" \
             bootstrap \
             --fsid $FSID \
             --config "$BOOTSTRAP_CONFIG" \
@@ -237,7 +221,7 @@ function add_osds {
     # let's add some osds
     if [ -z "$DEVICES" ]; then
         echo "Using ALL available devices"
-        $SUDO $CEPHADM shell ceph orch apply osd --all-available-devices
+        $SUDO "$CEPHADM" shell ceph orch apply osd --all-available-devices
     else
         for item in "${DEVICES[@]}"; do
             echo "Creating osd $item on node $HOSTNAME"
@@ -247,7 +231,7 @@ function add_osds {
     fi
 
     while [ "$ATTEMPTS" -ne 0 ]; do
-        num_osds=$($SUDO $CEPHADM shell --fsid $FSID --config $CEPH_CONFIG \
+        num_osds=$($SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph -s -f json | jq '.osdmap | .num_up_osds')
         if [ "$num_osds" -ge "$MIN_OSDS" ]; then
             break;
@@ -302,6 +286,7 @@ function _create_key {
     $SUDO "$CEPHADM" shell -v "$KEY_EXPORT_DIR:$KEY_EXPORT_DIR" --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph auth get-or-create "$name" mgr "allow rw" mon "allow r" osd "$osd_caps" \
         -o "$KEY_EXPORT_DIR/ceph.$name.keyring"
+
 
     $SUDO chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.$name.keyring
@@ -645,7 +630,6 @@ function configure_ceph {
     if is_ceph_enabled_for_service cinder; then
         POOLS+=($CINDER_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
-        set_min_client_version
     fi
 
     if is_ceph_enabled_for_service c-bak; then
@@ -662,8 +646,10 @@ function configure_ceph {
     [ "$ENABLE_CEPH_RGW" == "True" ] && SERVICES+=('rgw')
 
     enable_services
-    add_pools
-    create_keys
+    if [[ "$REMOTE_CEPH" = "False" ]]; then
+        add_pools
+        create_keys
+    fi
     client_config
     import_libvirt_secret_ceph
 
@@ -680,8 +666,12 @@ function configure_ceph_manila {
 
 function cleanup_ceph {
     # Cleanup the service.
-    stop_ceph
-    delete_osd_dev
+    if [[ "$REMOTE_CEPH" == "True" ]]; then
+        echo "Remote Ceph cluster, skipping stop_ceph and delete_osd_dev"
+    else
+        stop_ceph
+        delete_osd_dev
+    fi
     # purge ceph config file and keys
     $SUDO rm -f ${CEPH_CONF_DIR}/*
     if is_ceph_enabled_for_service nova; then
