@@ -93,6 +93,22 @@
       Runs manila tempest plugin tests with CephFS via NFS-Ganesha as a manila
       back end (DHSS=False)
     parent: manila-tempest-plugin-cephfs-nfs
+    nodeset: devstack-single-node-centos-9-stream
+    vars:
+      # TODO(gouthamr): some tests are disabled due to bugs
+      # IPv6 Tests: https://bugs.launchpad.net/manila/+bug/1998489
+      # snapshot clone fs sync: https://bugs.launchpad.net/manila/+bug/1989273
+      tempest_exclude_regex: "\
+      (^manila_tempest_tests.tests.scenario.*IPv6.*)|\
+      (^manila_tempest_tests.tests.scenario.test_share_basic_ops.TestShareBasicOpsNFS.test_write_data_to_share_created_from_snapshot)"
+      devstack_localrc:
+        MANILA_OPTGROUP_cephfsnfs_cephfs_ganesha_server_ip: "{{ hostvars[inventory_hostname]['nodepool']['private_ipv4'] }}"
+        CEPH_RELEASE: "quincy"
+        MANILA_SETUP_IPV6: false
+        NEUTRON_CREATE_INITIAL_NETWORKS: true
+        IP_VERSION: 4
+
+
 
 - job:
     name: devstack-plugin-ceph-tempest-fedora-latest
@@ -176,9 +192,9 @@
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
-        # - devstack-plugin-ceph-cephfs-nfs:
-        #     irrelevant-files: *irrelevant-files
-        #     voting: false
+        - devstack-plugin-ceph-cephfs-nfs:
+            irrelevant-files: *irrelevant-files
+            voting: false
         # - devstack-plugin-ceph-tempest-fedora-latest
         # - devstack-plugin-ceph-multinode-tempest-py3
         # - devstack-plugin-ceph-multinode-tempest-cephadm:
