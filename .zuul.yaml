@@ -85,7 +85,7 @@
     description: |
       Runs manila tempest plugin tests with Native CephFS as a manila back
       end (DHSS=False)
-    parent: manila-tempest-plugin-cephfs-native
+    parent: manila-tempest-plugin-cephfs-native-cephadm
 
 - job:
     name: devstack-plugin-ceph-cephfs-nfs
