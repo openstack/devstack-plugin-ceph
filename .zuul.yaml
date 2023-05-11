@@ -133,7 +133,8 @@
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         ENABLE_VOLUME_MULTIATTACH: true
-        TEMPEST_RUN_VALIDATION: false
+        TEMPEST_RUN_VALIDATION: true
+        USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
         CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
