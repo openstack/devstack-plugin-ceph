@@ -6,3 +6,8 @@ tempest.scenario.test_encrypted_cinder_volumes.TestEncryptedCinderVolumes.test_e
 # Skip network and identity API tests since they have no bearing on a Ceph backend.
 tempest.api.network
 tempest.api.identity
+
+# TODO: Due to password injection issue during rebuild, this test fail on ceph job 100%.
+# Remve this test from this file once bug: https://bugs.launchpad.net/tempest/+bug/2025096
+# is fixed.
+tempest.api.compute.servers.test_server_actions.ServerActionsV293TestJSON.test_rebuild_volume_backed_server
