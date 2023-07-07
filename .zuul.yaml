@@ -18,11 +18,14 @@
       - ^tox.ini$
     timeout: 7200
     vars:
+      configure_swap_size: 8192
+      tempest_concurrency: 3
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         TEMPEST_PLUGINS: '/opt/stack/cinder-tempest-plugin'
         ENABLE_VOLUME_MULTIATTACH: false
-        TEMPEST_RUN_VALIDATION: false
+        TEMPEST_RUN_VALIDATION: True
+        MYSQL_REDUCE_MEMORY: True
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       devstack_services:
