@@ -28,7 +28,7 @@ set +o xtrace
 
 TEST_MASTER=$(trueorfalse False TEST_MASTER)
 
-CEPH_RELEASE=${CEPH_RELEASE:-pacific}
+CEPH_RELEASE=${CEPH_RELEASE:-quincy}
 
 GANESHA_RELEASE=${GANESHA_RELEASE:-'unspecified'}
 # Remove "v" and "-stable" prefix/suffix tags
