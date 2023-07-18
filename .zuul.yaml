@@ -111,14 +111,6 @@
 
 
 - job:
-    name: devstack-plugin-ceph-tempest-fedora-latest
-    parent: devstack-plugin-ceph-tempest-py3
-    description: |
-      Integration tests that runs with the ceph devstack plugin on Fedora.
-    nodeset: devstack-single-node-fedora-latest
-    voting: false
-
-- job:
     name: devstack-plugin-ceph-multinode-tempest-py3
     parent: tempest-multinode-full-py3
     description: |
@@ -192,7 +184,6 @@
         - devstack-plugin-ceph-cephfs-nfs:
             irrelevant-files: *irrelevant-files
             voting: false
-        # - devstack-plugin-ceph-tempest-fedora-latest
         # - devstack-plugin-ceph-multinode-tempest-py3
         # - devstack-plugin-ceph-multinode-tempest-cephadm:
         #     voting: false
