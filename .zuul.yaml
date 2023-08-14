@@ -34,7 +34,7 @@
       tox_envlist: all
       tempest_test_regex: |
               (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
+      tempest_test_exclude_list: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
     name: devstack-plugin-ceph-tempest-ubuntu
@@ -122,7 +122,7 @@
         - cinder-tempest-plugin
       tempest_test_regex: |
         (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
-      tempest_test_blacklist: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist_multinode.txt'
+      tempest_test_exclude_list: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist_multinode.txt'
     group-vars:
       subnode:
         devstack_localrc:
