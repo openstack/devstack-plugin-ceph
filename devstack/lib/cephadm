@@ -130,7 +130,10 @@ function install_deps {
 
 # Pre-install ceph: get cephadm binary
 function get_cephadm {
-    curl -O https://raw.githubusercontent.com/ceph/ceph/"$CEPH_RELEASE"/src/cephadm/cephadm
+    # NOTE(gouthamr): cephadm binary here is a python executable, and the
+    # $os_PACKAGE ("rpm") or $os_release (el9) doesn't really matter. There is
+    # no ubuntu/debian equivalent being published by the ceph community.
+    curl -O https://download.ceph.com/rpm-${CEPH_RELEASE}/el9/noarch/cephadm
     $SUDO mv cephadm $TARGET_BIN
     $SUDO chmod +x $TARGET_BIN/cephadm
     echo "[GET CEPHADM] cephadm is now available"
