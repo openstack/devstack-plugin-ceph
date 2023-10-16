@@ -20,3 +20,4 @@ if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
 fi
 
 CEPHADM_DEPLOY=$(trueorfalse False CEPHADM_DEPLOY)
+REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)

@@ -2,9 +2,7 @@
     name: devstack-plugin-ceph-tempest-py3-base
     abstract: true
     parent: tempest-full-py3
-    # TODO: Remove the nodeset pinning to focal once below bug is fixed
-    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
-    nodeset: openstack-single-node-focal
+    nodeset: openstack-single-node-jammy
     description: |
       Base integration tests that runs with the ceph devstack plugin and py3.
       Former names for this job where:
@@ -48,19 +46,8 @@
       This job enable the multiattach feature enable from stein on.
     vars:
       devstack_localrc:
-        ENABLE_VOLUME_MULTIATTACH: true
-        CEPH_RELEASE: "pacific"
-
-- job:
-    name: devstack-plugin-ceph-tempest-cephadm
-    parent: devstack-plugin-ceph-tempest-py3-base
-    description: |
-      Integration tests that runs with the ceph devstack plugin and py3.
-      The ceph cluster is deployed using cephadm
-    vars:
-      tempest_concurrency: 1
-      devstack_localrc:
-        CEPHADM_DEPLOY: true
+        DISABLE_CEPHADM_POST_DEPLOY: True
+        CEPHADM_DEPLOY: True
 
 - job:
     name: devstack-plugin-ceph-compute-local-ephemeral
@@ -96,50 +83,29 @@
       Runs manila tempest plugin tests with CephFS via NFS-Ganesha as a manila
       back end (DHSS=False)
     parent: manila-tempest-plugin-cephfs-nfs
-    nodeset: devstack-single-node-centos-9-stream
-    vars:
-      # TODO(gouthamr): some tests are disabled due to bugs
-      # IPv6 Tests: https://bugs.launchpad.net/manila/+bug/1998489
-      # snapshot clone fs sync: https://bugs.launchpad.net/manila/+bug/1989273
-      tempest_exclude_regex: "\
-      (^manila_tempest_tests.tests.scenario.*IPv6.*)|\
-      (^manila_tempest_tests.tests.scenario.test_share_basic_ops.TestShareBasicOpsNFS.test_write_data_to_share_created_from_snapshot)"
-      devstack_localrc:
-        MANILA_OPTGROUP_cephfsnfs_cephfs_ganesha_server_ip: "{{ hostvars[inventory_hostname]['nodepool']['private_ipv4'] }}"
-        CEPH_RELEASE: "quincy"
-        MANILA_SETUP_IPV6: false
-        NEUTRON_CREATE_INITIAL_NETWORKS: true
-        IP_VERSION: 4
-
-
-
-- job:
-    name: devstack-plugin-ceph-tempest-fedora-latest
-    parent: devstack-plugin-ceph-tempest-py3
-    description: |
-      Integration tests that runs with the ceph devstack plugin on Fedora.
-    nodeset: devstack-single-node-fedora-latest
-    voting: false
 
 - job:
     name: devstack-plugin-ceph-multinode-tempest-py3
     parent: tempest-multinode-full-py3
     description: |
       Integration tests that runs the ceph device plugin across multiple
-      nodes on py3.
-    # TODO: Remove the nodeset pinning to focal once below bug is fixed
-    # https://bugs.launchpad.net/devstack-plugin-ceph/+bug/1996628
-    nodeset: openstack-two-node-focal
+      nodes on py3. The Ceph deployment strategy used by this job is Cephadm.
     required-projects:
       - openstack/cinder-tempest-plugin
       - openstack/devstack-plugin-ceph
     timeout: 10800
-    voting: false
     vars:
+      configure_swap_size: 8192
+      tempest_concurrency: 3
       devstack_localrc:
         ENABLE_FILE_INJECTION: false
         ENABLE_VOLUME_MULTIATTACH: true
-        TEMPEST_RUN_VALIDATION: false
+        TEMPEST_RUN_VALIDATION: true
+        USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
+        CEPHADM_DEPLOY: True
+        DISABLE_CEPHADM_POST_DEPLOY: True
+        MYSQL_REDUCE_MEMORY: True
+        REMOTE_CEPH: False
         CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
@@ -155,7 +121,8 @@
     group-vars:
       subnode:
         devstack_localrc:
-          REMOTE_CEPH: true
+          REMOTE_CEPH: True
+          CEPHADM_DEPLOY: True
           CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
 
 - job:
@@ -169,19 +136,6 @@
       devstack_localrc:
         TEST_MASTER: true
 
-- job:
-    name: devstack-plugin-ceph-multinode-tempest-cephadm
-    parent: devstack-plugin-ceph-multinode-tempest-py3
-    description: |
-      Integration tests that runs the ceph device plugin across multiple
-      nodes on py3.
-      The ceph deployment strategy used by this job is cephadm.
-    vars:
-      devstack_localrc:
-        USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
-        CEPHADM_DEPLOY: true
-      tempest_concurrency: 1
-
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -192,6 +146,7 @@
             voting: false
         - devstack-plugin-ceph-tempest-cephadm:
             voting: false
+        - devstack-plugin-ceph-multinode-tempest-py3
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
@@ -204,9 +159,9 @@
         #     voting: false
         # - devstack-plugin-ceph-master-tempest:
         #     voting: false
-    # gate:
-    #   jobs:
-    #     - devstack-plugin-ceph-tempest-py3
+    gate:
+      jobs:
+        - devstack-plugin-ceph-tempest-py3
 
 - project:
     templates:

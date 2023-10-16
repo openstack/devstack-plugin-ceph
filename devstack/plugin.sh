@@ -40,10 +40,14 @@ elif [[ "$1" == "stack" && "$2" == "pre-install" ]]; then
         fi
     fi
 elif [[ "$1" == "stack" && "$2" == "install" ]]; then
-    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+    if [[ "$CEPHADM_DEPLOY" = "True" && "$REMOTE_CEPH" = "False" ]]; then
         # Perform installation of service source
         echo_summary "[cephadm] Installing ceph"
         install_ceph
+        set_min_client_version
+    elif [[ "$CEPHADM_DEPLOY" = "True" && "$REMOTE_CEPH" = "True" ]]; then
+        echo "[CEPHADM] Remote Ceph: Skipping install"
+        get_cephadm
     else
         # FIXME(melwitt): This is a hack to get around a namespacing issue with
         # Paste and PasteDeploy. For stable/queens, we use the Pike UCA packages
@@ -53,9 +57,8 @@ elif [[ "$1" == "stack" && "$2" == "install" ]]; then
         # newer version of it, while python-pastedeploy remains. The mismatch
         # between the install path of paste and paste.deploy causes Keystone to
         # fail to start, with "ImportError: cannot import name deploy."
-        if [[ "$TARGET_BRANCH" == stable/queens || "$TARGET_BRANCH" == master ]]; then
-            pip_install -U --force PasteDeploy
-        fi
+        pip_install -U --force PasteDeploy
+        install_package python-is-python3
     fi
 elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
     if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
