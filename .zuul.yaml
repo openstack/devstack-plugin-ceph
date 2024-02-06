@@ -95,6 +95,11 @@
     parent: manila-tempest-plugin-cephfs-nfs
 
 - job:
+    name: devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
+    parent: manila-tempest-plugin-multinode-cephfs-nfs-cephadm
+    description: Test CephFS NFS (DHSS=False) in a Multinode devstack env
+
+- job:
     name: devstack-plugin-ceph-multinode-tempest-py3
     parent: tempest-multinode-full-py3
     description: |
@@ -156,6 +161,7 @@
         - devstack-plugin-ceph-tempest-ubuntu:
             voting: false
         - devstack-plugin-ceph-multinode-tempest-py3
+        - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false

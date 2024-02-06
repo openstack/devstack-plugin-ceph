@@ -72,6 +72,7 @@ CEPHFS_CLIENT=0
 CEPHFS_CLIENT_NAME="client.$MANILA_CEPH_USER"
 CEPHFS_CLIENT_LOG="/var/log/ceph-$CEPHFS_CLIENT_NAME.log"
 CEPHFS_MULTIPLE_FILESYSTEMS=${CEPHFS_MULTIPLE_FILESYSTEMS:-False}
+VIP=$HOST_IP
 
 
 # GLANCE DEFAULTS
@@ -318,13 +319,34 @@ function cephfs_config {
         --keyring $CEPH_KEYRING -- ceph fs volume create "$FSNAME"
 }
 
+# Get Ceph version
+function _get_ceph_version {
+    local ceph_version_str
+
+    ceph_version_str=$(sudo podman run --rm --entrypoint ceph $CONTAINER_IMAGE \
+        --version | awk '{ print $3 }')
+
+    echo $ceph_version_str
+}
+
 # Install ceph: add NFS
 function ceph_nfs_config {
-    # (fpantano) TODO: Build an ingress daemon on top of this
+    local ceph_version
+    ceph_version=$(_get_ceph_version)
+
     echo "[CEPHADM] Deploy nfs.$FSNAME backend"
-    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
-        --keyring $CEPH_KEYRING -- ceph orch apply nfs \
-        "$FSNAME" --placement="$HOSTNAME" --port $NFS_PORT
+    if [ "${ceph_version%%\.*}" -ge 18 ]; then
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph nfs cluster create \
+            "$FSNAME" "$HOSTNAME" --port $NFS_PORT --ingress \
+            --ingress-mode haproxy-protocol --virtual_ip $HOST_IP
+    else
+        echo "[CEPHADM] Ingress service is not deployed \
+        to preserve the ability to apply client restrictions."
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph nfs cluster create \
+            "$FSNAME" "$HOSTNAME" --port $NFS_PORT
+    fi
 }
 
 function _create_swift_endpoint {
