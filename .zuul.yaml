@@ -75,7 +75,7 @@
     description: |
       Runs manila tempest plugin tests with Native CephFS as a manila back
       end (DHSS=False)
-    parent: manila-tempest-plugin-cephfs-native
+    parent: manila-tempest-plugin-cephfs-native-cephadm
 
 - job:
     name: devstack-plugin-ceph-cephfs-nfs
@@ -83,6 +83,11 @@
       Runs manila tempest plugin tests with CephFS via NFS-Ganesha as a manila
       back end (DHSS=False)
     parent: manila-tempest-plugin-cephfs-nfs
+
+- job:
+    name: devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
+    parent: manila-tempest-plugin-multinode-cephfs-nfs-cephadm
+    description: Test CephFS NFS (DHSS=False) in a Multinode devstack env
 
 - job:
     name: devstack-plugin-ceph-multinode-tempest-py3
@@ -147,6 +152,7 @@
         - devstack-plugin-ceph-tempest-cephadm:
             voting: false
         - devstack-plugin-ceph-multinode-tempest-py3
+        - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
