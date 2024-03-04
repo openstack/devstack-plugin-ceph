@@ -135,11 +135,12 @@ function get_cephadm {
     # $os_PACKAGE ("rpm") doesn't really matter. There is no ubuntu/debian
     # equivalent being published by the ceph community.
     os_release="el9"
+    ceph_version=$(_get_ceph_version)
     case $CEPH_RELEASE in
         pacific|octopus)
             os_release="el8";;
     esac
-    curl -O https://download.ceph.com/rpm-${CEPH_RELEASE}/${os_release}/noarch/cephadm
+    curl -f -O https://download.ceph.com/rpm-${ceph_version}/${os_release}/noarch/cephadm
     $SUDO mv cephadm $TARGET_BIN
     $SUDO chmod +x $TARGET_BIN/cephadm
     echo "[GET CEPHADM] cephadm is now available"
