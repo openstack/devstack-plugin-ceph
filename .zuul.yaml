@@ -161,7 +161,9 @@
         - devstack-plugin-ceph-tempest-ubuntu:
             voting: false
         - devstack-plugin-ceph-multinode-tempest-py3
-        - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
+        - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm:
+            irrelevant-files: *irrelevant-files
+            voting: false
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
