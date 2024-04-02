@@ -88,10 +88,11 @@
     parent: manila-tempest-plugin-cephfs-native-cephadm
 
 - job:
-    name: devstack-plugin-ceph-cephfs-nfs
+    name: devstack-plugin-ceph-cephfs-nfs-standalone
     description: |
       Runs manila tempest plugin tests with CephFS via NFS-Ganesha as a manila
-      back end (DHSS=False)
+      back end (DHSS=False). The Ceph cluster is created with cephadm
+      while nfs-ganesha is installed "standalone" via a package.
     parent: manila-tempest-plugin-cephfs-nfs
 
 - job:
@@ -167,7 +168,7 @@
         - devstack-plugin-ceph-cephfs-native:
             irrelevant-files: *irrelevant-files
             voting: false
-        - devstack-plugin-ceph-cephfs-nfs:
+        - devstack-plugin-ceph-cephfs-nfs-standalone:
             irrelevant-files: *irrelevant-files
             voting: false
         # - devstack-plugin-ceph-master-tempest:
