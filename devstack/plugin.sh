@@ -33,6 +33,9 @@ elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
         iniset $TEMPEST_CONFIG compute-feature-enabled shelve True
         iniset $TEMPEST_CONFIG volume-feature-enabled extend_attached_volume True
         iniset $TEMPEST_CONFIG volume-feature-enabled volume_revert True
+        iniset $TEMPEST_CONFIG volume-feature-enabled manage_volume True
+        iniset $TEMPEST_CONFIG volume-feature-enabled manage_snapshot True
+        iniset $TEMPEST_CONFIG volume manage_snapshot_ref "source-name, snapshot-%s"
     fi
 elif [[ "$1" == "unstack" || "$1" == "clean" ]]; then
     cleanup_ceph
