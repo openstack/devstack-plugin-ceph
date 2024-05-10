@@ -383,7 +383,7 @@ function _install_and_configure_clustered_nfs {
 }
 
 function _install_and_configure_standalone_nfs {
-    source $CEPH_PLUGIN_DIR/lib/common
+    source $CEPH_PLUGIN_DIR/lib/nfs-ganesha
     install_nfs_ganesha
     configure_nfs_ganesha
     start_nfs_ganesha

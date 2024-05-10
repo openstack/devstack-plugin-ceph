@@ -27,7 +27,6 @@
         TEMPEST_RUN_VALIDATION: True
         MYSQL_REDUCE_MEMORY: True
         DISABLE_CEPHADM_POST_DEPLOY: True
-        CEPHADM_DEPLOY: true
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       devstack_services:
@@ -112,7 +111,6 @@
         ENABLE_VOLUME_MULTIATTACH: true
         TEMPEST_RUN_VALIDATION: true
         USE_BLOCK_MIGRATION_FOR_LIVE_MIGRATION: false
-        CEPHADM_DEPLOY: True
         DISABLE_CEPHADM_POST_DEPLOY: True
         MYSQL_REDUCE_MEMORY: True
         REMOTE_CEPH: False
@@ -132,7 +130,6 @@
       subnode:
         devstack_localrc:
           REMOTE_CEPH: True
-          CEPHADM_DEPLOY: True
           CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
 
 - project-template:
