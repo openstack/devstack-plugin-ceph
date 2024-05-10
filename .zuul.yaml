@@ -26,6 +26,8 @@
         ENABLE_VOLUME_MULTIATTACH: false
         TEMPEST_RUN_VALIDATION: True
         MYSQL_REDUCE_MEMORY: True
+        DISABLE_CEPHADM_POST_DEPLOY: True
+        CEPHADM_DEPLOY: true
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       devstack_services:
@@ -37,27 +39,12 @@
       tempest_test_exclude_list: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
-    name: devstack-plugin-ceph-tempest-ubuntu
-    parent: devstack-plugin-ceph-tempest-py3-base
-    description: |
-      Integration tests that runs with the ceph devstack plugin using ceph
-      packages from the distro.
-
-      This job enable the multiattach feature enable from stein on.
-    vars:
-      devstack_localrc:
-        ENABLE_VOLUME_MULTIATTACH: true
-
-- job:
     name: devstack-plugin-ceph-tempest-py3
     parent: devstack-plugin-ceph-tempest-py3-base
     description: |
       Integration tests that runs with the ceph devstack plugin using ceph
       deployed using cephadm.
-    vars:
-      devstack_localrc:
-        DISABLE_CEPHADM_POST_DEPLOY: True
-        CEPHADM_DEPLOY: true
+
 
 - job:
     name: devstack-plugin-ceph-compute-local-ephemeral
@@ -141,17 +128,6 @@
           CEPHADM_DEPLOY: True
           CINDER_CEPH_UUID: d531d2d4-3937-429c-b0c2-658fe41e82aa
 
-- job:
-    name: devstack-plugin-ceph-master-tempest
-    parent: devstack-plugin-ceph-tempest-py3-base
-    description: |
-      Integration tests that runs with the ceph devstack plugin
-      using Ceph master as the backend.
-    branches: master
-    vars:
-      devstack_localrc:
-        TEST_MASTER: true
-
 - project-template:
     name: devstack-plugin-ceph-tempest-jobs
     description: |
@@ -159,8 +135,6 @@
     check:
       jobs:
         - devstack-plugin-ceph-tempest-py3
-        - devstack-plugin-ceph-tempest-ubuntu:
-            voting: false
         - devstack-plugin-ceph-multinode-tempest-py3
         - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm:
             irrelevant-files: *irrelevant-files
@@ -171,8 +145,6 @@
         - devstack-plugin-ceph-cephfs-nfs-standalone:
             irrelevant-files: *irrelevant-files
             voting: false
-        # - devstack-plugin-ceph-master-tempest:
-        #     voting: false
     gate:
       jobs:
         - devstack-plugin-ceph-tempest-py3
