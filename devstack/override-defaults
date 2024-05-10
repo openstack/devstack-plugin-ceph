@@ -8,20 +8,9 @@ ENABLE_CEPH_NOVA=$(trueorfalse True ENABLE_CEPH_NOVA)
 # Do not enable RGW by default as RGW is not tested in upstream CI.
 ENABLE_CEPH_RGW=$(trueorfalse False ENABLE_CEPH_RGW)
 
-if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
-    if [[ $ENABLE_CEPH_ISCSI == "True" ]]; then
-        CINDER_DRIVER=${CINDER_DRIVER:-ceph_iscsi}
-        CINDER_ENABLED_BACKENDS=${CINDER_ENABLED_BACKENDS:-ceph_iscsi}
-        CINDER_ISCSI_HELPER=${CINDER_ISCSI_HELPER:-lioadm}
-    else
-        CINDER_DRIVER=${CINDER_DRIVER:-ceph}
-        CINDER_ENABLED_BACKENDS=${CINDER_ENABLED_BACKENDS:-ceph}
-    fi
-fi
-
+CINDER_DRIVER=${CINDER_DRIVER:-ceph}
+CINDER_ENABLED_BACKENDS=${CINDER_ENABLED_BACKENDS:-ceph}
+REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
 if [[ $ENABLE_CEPH_MANILA == "True" ]]; then
     MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 fi
-
-CEPHADM_DEPLOY=$(trueorfalse False CEPHADM_DEPLOY)
-REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
