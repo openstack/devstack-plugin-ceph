@@ -79,7 +79,8 @@ elif [[ "$1" == "stack" && "$2" == "post-config" ]]; then
             echo_summary "Configuring Cinder for Ceph"
             configure_ceph_cinder
         fi
-        if is_ceph_enabled_for_service nova; then
+        if is_ceph_enabled_for_service nova || \
+           is_ceph_enabled_for_service cinder; then
             # NOTE (leseb): the part below is a requirement
             # to attach Ceph block devices
             echo_summary "Configuring libvirt secret"
