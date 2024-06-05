@@ -98,6 +98,11 @@
     name: devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
     parent: manila-tempest-plugin-multinode-cephfs-nfs-cephadm
     description: Test CephFS NFS (DHSS=False) in a Multinode devstack env
+    vars:
+      devstack_localrc:
+        MDS_LOGS: True
+        CEPH_INGRESS_IP: "{{hostvars['controller'].ansible_default_ipv6.address}}"
+
 
 - job:
     name: devstack-plugin-ceph-multinode-tempest-py3
