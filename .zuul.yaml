@@ -95,6 +95,15 @@
     parent: manila-tempest-plugin-cephfs-nfs
 
 - job:
+    name: devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
+    parent: manila-tempest-plugin-multinode-cephfs-nfs-cephadm
+    description: Test CephFS NFS (DHSS=False) in a Multinode devstack env
+    vars:
+      devstack_localrc:
+        CEPH_INGRESS_IP: "{{hostvars['controller'].ansible_default_ipv6.address}}"
+
+
+- job:
     name: devstack-plugin-ceph-multinode-tempest-py3
     parent: tempest-multinode-full-py3
     description: |
@@ -160,6 +169,9 @@
             irrelevant-files: *irrelevant-files
             voting: false
         - devstack-plugin-ceph-cephfs-nfs:
+            irrelevant-files: *irrelevant-files
+            voting: false
+        - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm:
             irrelevant-files: *irrelevant-files
             voting: false
         # - devstack-plugin-ceph-master-tempest:
