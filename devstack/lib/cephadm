@@ -61,6 +61,8 @@ CEPH_CONF_FILE=${CEPH_CONF_FILE:-$CEPH_CONF_DIR/ceph.conf}
 # LOG(s) and EXPORTED CONFIG FILES
 EXPORT=$HOME/ceph_export.yml
 RBD_CLIENT_LOG=/var/log/ceph/qemu-guest-\$pid.log
+MDS_LOG_FILE="$HOME/mds_log.conf"
+MDS_LOGS=${MDS_LOGS:-"False"}
 
 # MANILA DEFAULTS
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
@@ -72,7 +74,7 @@ CEPHFS_CLIENT=0
 CEPHFS_CLIENT_NAME="client.$MANILA_CEPH_USER"
 CEPHFS_CLIENT_LOG="/var/log/ceph-$CEPHFS_CLIENT_NAME.log"
 CEPHFS_MULTIPLE_FILESYSTEMS=${CEPHFS_MULTIPLE_FILESYSTEMS:-False}
-VIP=$HOST_IP
+VIP=$CEPH_INGRESS_IP
 
 
 # GLANCE DEFAULTS
@@ -107,6 +109,33 @@ function set_debug {
             --keyring $CEPH_KEYRING -- ceph config set mgr mgr/cephadm/log_to_cluster_level debug
         echo "[CEPHADM] See debug logs running: ceph -W cephadm --watch-debug"
     fi
+}
+
+function enable_verbose_mds_logging {
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set mds debug_mds 20
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set mds debug_ms 20
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set mds debug_client 20
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set mds log_to_file true
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set global mon_cluster_log_to_file true
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set global log_to_file true
+    touch "$MDS_LOG_FILE"
+    cat <<EOF > "$MDS_LOG_FILE"
+LOG {
+ COMPONENTS {
+     ALL = FULL_DEBUG;
+ }
+}
+EOF
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -m $MDS_LOG_FILE -- ceph nfs cluster config set "$FSNAME" \
+        -i /mnt/mds_log.conf
+
 }
 
 # Admin: check ceph cluster status
@@ -340,7 +369,7 @@ function ceph_nfs_config {
         $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
             --keyring $CEPH_KEYRING -- ceph nfs cluster create \
             "$FSNAME" "$HOSTNAME" --port $NFS_PORT --ingress \
-            --ingress-mode haproxy-protocol --virtual_ip $HOST_IP
+            --ingress-mode haproxy-protocol --virtual_ip $VIP
     else
         echo "[CEPHADM] Ingress service is not deployed \
         to preserve the ability to apply client restrictions."
