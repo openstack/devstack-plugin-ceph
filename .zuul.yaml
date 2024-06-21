@@ -31,9 +31,11 @@
       devstack_services:
         # Disable horizon (inherited from the parent, not needed by the tests executed here)
         horizon: false
+      # The regex below is used to select which tests to run and exclude the slow tag and
+      # tests listed in tempest_skiplist.txt file:
       tox_envlist: all
       tempest_test_regex: |
-              (^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin))
+              ((?!.*\[.*\bslow\b.*\])(^tempest\.(api|scenario\.test_encrypted_cinder_volumes|scenario\.test_volume|scenario\.test_shelve_instance)|(^cinder_tempest_plugin)))
       tempest_test_exclude_list: '{{ ansible_user_dir }}/{{ zuul.projects["opendev.org/openstack/devstack-plugin-ceph"].src_dir }}/tempest_skiplist.txt'
 
 - job:
