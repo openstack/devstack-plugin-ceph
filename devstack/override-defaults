@@ -19,5 +19,9 @@ if [[ $ENABLE_CEPH_CINDER == "True" ]]; then
     fi
 fi
 
+if [[ $ENABLE_CEPH_MANILA == "True" ]]; then
+    MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
+fi
+
 CEPHADM_DEPLOY=$(trueorfalse False CEPHADM_DEPLOY)
 REMOTE_CEPH=$(trueorfalse False REMOTE_CEPH)
