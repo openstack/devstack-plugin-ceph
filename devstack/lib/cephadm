@@ -18,7 +18,7 @@ XTRACE=$(set +o | grep xtrace)
 set +o xtrace
 
 # GENERIC CEPHADM INTERNAL OPTIONS, DO NOT EDIT
-CEPH_RELEASE=${CEPH_RELEASE:-quincy}
+CEPH_RELEASE=${CEPH_RELEASE:-reef}
 CEPH_PUB_KEY="/etc/ceph/ceph.pub"
 CEPH_CONFIG="/etc/ceph/ceph.conf"
 BOOTSTRAP_CONFIG="$HOME/bootstrap_ceph.conf"
@@ -29,7 +29,7 @@ DISABLE_CEPHADM_POST_DEPLOY=${DISABLE_CEPHADM_POST_DEPLOY:-False}
 
 # DEFAULT OPTIONS
 ATTEMPTS=30
-CONTAINER_IMAGE=${CONTAINER_IMAGE:-'quay.io/ceph/ceph:v17.2'}
+CONTAINER_IMAGE=${CONTAINER_IMAGE:-'quay.io/ceph/ceph:v18.2'}
 DEVICES=()
 if [[ "$REMOTE_CEPH" = "False" ]]; then
     FSID=$(uuidgen)
