@@ -11,3 +11,9 @@ tempest.api.identity
 tempest.api.compute.admin.test_live_migration.LiveMigrationTest.test_live_block_migration
 tempest.api.compute.admin.test_live_migration.LiveAutoBlockMigrationV225Test.test_live_block_migration
 tempest.scenario.test_network_advanced_server_ops.TestNetworkAdvancedServerOps.test_server_connectivity_live_migration
+
+# FIXME: https://review.opendev.org/925617 to tempest added image format tests that
+# cannot pass in this job because the image data takes a optimized path that
+# bypasses nova's checks.  Until the nova team decides on a strategy to handle
+# this issue, we skip these tests.
+tempest.api.image.v2.test_images_formats.ImagesFormatTest
