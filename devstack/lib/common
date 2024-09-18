@@ -1,0 +1,149 @@
+#!/bin/bash
+
+# Allows driver to store NFS-Ganesha exports and export counter as
+# RADOS objects in CephFS's data pool. This needs NFS-Ganesha v2.5.4 or later,
+# Ceph v12.2.2 or later, and OpenStack Queens or later.
+MANILA_CEPH_GANESHA_RADOS_STORE=${MANILA_CEPH_GANESHA_RADOS_STORE:-True}
+GANESHA_RELEASE=${GANESHA_RELEASE:-'unspecified'}
+# Remove "v" and "-stable" prefix/suffix tags
+GANESHA_RELEASE=$(echo $GANESHA_RELEASE | sed -e "s/^v//" -e "s/-stable$//")
+if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+    FSNAME=${FSNAME:-'cephfs'}
+    CEPHFS_DATA_POOL="cephfs.$FSNAME.data"
+else
+    CEPHFS_DATA_POOL=${CEPHFS_DATA_POOL:-cephfs_data}
+fi
+
+if [[ "$MANILA_CEPH_DRIVER" == "cephfsnfs" && "$GANESHA_RELEASE" == "unspecified" ]]; then
+    # default ganesha release based on ceph release
+    case $CEPH_RELEASE in
+    pacific)
+        GANESHA_RELEASE='3.5'
+        ;;
+    *)
+        GANESHA_RELEASE='5.0'
+        ;;
+    esac
+fi
+
+# configure_repo_nfsganesha - Configure NFS Ganesha repositories
+function configure_repo_nfsganesha {
+    if is_ubuntu; then
+        # NOTE(gouthamr): Ubuntu PPAs contain the latest build from each major
+        # version; we can't use a build microversion unlike el8/el9 builds
+        case $GANESHA_RELEASE in
+        3.*)
+            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
+            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
+            ;;
+        *)
+            GANESHA_PPA_VERSION="${GANESHA_RELEASE:0:1}"
+            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-"$GANESHA_PPA_VERSION"
+            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-"$GANESHA_PPA_VERSION"
+            ;;
+        esac
+        sudo apt-get -y update
+    elif is_fedora; then
+        local repo=""
+        case $GANESHA_RELEASE in
+        3.*)
+            repo="centos-release-nfs-ganesha30"
+            ;;
+        *)
+            repo="centos-release-nfs-ganesha5"
+            ;;
+        esac
+        sudo dnf -y install ${repo}
+    fi
+}
+
+function install_nfs_ganesha {
+    configure_repo_nfsganesha
+    NFS_GANESHA_PACKAGES="nfs-ganesha nfs-ganesha-ceph \
+        nfs-ganesha-rados-urls nfs-ganesha-vfs"
+    if is_ubuntu; then
+        LIBNTIRPC_PACKAGE="libntirpc${GANESHA_RELEASE:0:1}"
+        NFS_GANESHA_PACKAGES="${LIBNTIRPC_PACKAGE} ${NFS_GANESHA_PACKAGES}"
+    fi
+    install_package $NFS_GANESHA_PACKAGES
+}
+
+function configure_nfs_ganesha {
+    # Configure NFS-Ganesha to work with Manila's CephFS driver
+    rados_cmd="sudo rados -p ${CEPHFS_DATA_POOL}"
+    if [[ "$CEPHADM_DEPLOY" = "True" ]]; then
+        CEPHADM=${TARGET_BIN}/cephadm
+        rados_cmd="sudo $CEPHADM shell rados -p ${CEPHFS_DATA_POOL}"
+    fi
+
+
+    sudo mkdir -p /etc/ganesha/export.d
+    if [ $MANILA_CEPH_GANESHA_RADOS_STORE == 'True' ]; then
+        # Create an empty placeholder ganesha export index object
+        echo | $rados_cmd put ganesha-export-index -
+        cat <<EOF | sudo tee /etc/ganesha/ganesha.conf >/dev/null
+    RADOS_URLS {
+        ceph_conf = ${CEPH_CONF_FILE};
+        userid = admin;
+}
+
+CACHEINODE {
+        Dir_Max = 1;
+        Dir_Chunk = 0;
+
+        Cache_FDs = false;
+
+        NParts = 1;
+        Cache_Size = 1;
+}
+
+EXPORT_DEFAULTS {
+        Attr_Expiration_Time = 0;
+}
+
+%url rados://${CEPHFS_DATA_POOL}/ganesha-export-index
+EOF
+    else
+        sudo touch /etc/ganesha/export.d/INDEX.conf
+        echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee /etc/ganesha/ganesha.conf
+    fi
+}
+
+function start_nfs_ganesha {
+    # NFS-Ganesha server cannot run alongwith with other kernel NFS server.
+    sudo systemctl stop nfs-server || true
+    sudo systemctl disable nfs-server || true
+    sudo systemctl enable nfs-ganesha
+    sudo systemctl start nfs-ganesha || (
+        echo "Ganesha didn't start. Let's debug..." >&2
+        sudo systemctl status nfs-ganesha || true
+        echo "**Ganesha conf file**" >&2
+        sudo cat /etc/ganesha/ganesha.conf || true
+        echo "**Ganesha log file**" >&2
+        sudo cat /var/log/ganesha/ganesha.log || true
+        echo "**Exiting**" >&2
+        exit 1
+    )
+    echo "Standalone NFS-Ganesha started successfully!" >&2
+}
+
+function stop_nfs_ganesha {
+    sudo systemctl stop nfs-ganesha
+    sudo systemctl disable nfs-ganesha
+}
+
+function cleanup_nfs_ganesha {
+    sudo systemctl stop nfs-ganesha
+    sudo systemctl disable nfs-ganesha
+    sudo uninstall_package nfs-ganesha nfs-ganesha-ceph libntirpc3 nfs-ganesha-rados-urls nfs-ganesha-vfs
+}
+
+# cleanup_repo_nfsganesha() - Remove NFS Ganesha repositories
+# Usage: cleanup_repo_nfsganesha
+function cleanup_repo_nfsganesha {
+    if is_ubuntu; then
+        sudo rm -rf "/etc/apt/sources.list.d/nfs-ganesha-ubuntu*"
+    elif is_fedora; then
+        sudo rm -rf /etc/yum.repos.d/nfs-ganesha.repo
+    fi
+}

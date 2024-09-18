@@ -21,6 +21,7 @@
 # Save trace setting
 XTRACE=$(set +o | grep xtrace)
 set +o xtrace
+source $CEPH_PLUGIN_DIR/lib/common
 
 
 # Defaults
@@ -29,20 +30,6 @@ set +o xtrace
 TEST_MASTER=$(trueorfalse False TEST_MASTER)
 
 CEPH_RELEASE=${CEPH_RELEASE:-quincy}
-
-GANESHA_RELEASE=${GANESHA_RELEASE:-'unspecified'}
-# Remove "v" and "-stable" prefix/suffix tags
-GANESHA_RELEASE=$(echo $GANESHA_RELEASE | sed -e "s/^v//" -e "s/-stable$//")
-
-if [[ "$MANILA_CEPH_DRIVER" == "cephfsnfs" && "$GANESHA_RELEASE" == "unspecified" ]]; then
-    # default ganesha release based on ceph release
-    case $CEPH_RELEASE in
-        pacific)
-            GANESHA_RELEASE='3.5' ;;
-        *)
-            GANESHA_RELEASE='4.0' ;;
-    esac
-fi
 
 # Deploy a Ceph demo container instead of a non-containerized version
 CEPH_CONTAINERIZED=$(trueorfalse False CEPH_CONTAINERIZED)
@@ -111,10 +98,6 @@ CEPHFS_DATA_POOL=${CEPHFS_DATA_POOL:-cephfs_data}
 
 MANILA_CEPH_DRIVER=${MANILA_CEPH_DRIVER:-cephfsnative}
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
-# Allows driver to store NFS-Ganesha exports and export counter as
-# RADOS objects in CephFS's data pool. This needs NFS-Ganesha v2.5.4 or later,
-# Ceph v12.2.2 or later, and OpenStack Queens or later.
-MANILA_CEPH_GANESHA_RADOS_STORE=${MANILA_CEPH_GANESHA_RADOS_STORE:-True}
 
 # Set ``CEPH_REPLICAS`` to configure how many replicas are to be
 # configured for your Ceph cluster. By default we are configuring
@@ -757,65 +740,11 @@ function configure_ceph_manila {
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
         configure_nfs_ganesha
-        # NFS-Ganesha server cannot run alongwith with other kernel NFS server.
-        sudo systemctl stop nfs-server || true
-        sudo systemctl disable nfs-server || true
-        sudo systemctl enable nfs-ganesha
-        sudo systemctl start nfs-ganesha || (
-            echo "Ganesha didn't start. Let's debug..." >&2
-            sudo systemctl status nfs-ganesha || true
-            echo "**Ganesha conf file**" >&2
-            sudo cat /etc/ganesha/ganesha.conf || true
-            echo "**Ganesha log file**" >&2
-            sudo cat /var/log/ganesha/ganesha.log || true
-            echo "**Exiting**" >&2
-            exit 1
-        )
-        echo "Ganesha started successfully!" >&2
+        start_nfs_ganesha
     fi
 
 # RESTART DOCKER CONTAINER
 
-}
-
-function configure_nfs_ganesha {
-    # Configure NFS-Ganesha to work with Manila's CephFS driver
-    sudo mkdir -p /etc/ganesha/export.d
-    if [ $MANILA_CEPH_GANESHA_RADOS_STORE == 'True' ]; then
-        # Create an empty placeholder ganesha export index object
-        echo | sudo rados -p ${CEPHFS_DATA_POOL} put ganesha-export-index -
-        cat <<EOF | sudo tee /etc/ganesha/ganesha.conf>/dev/null
-RADOS_URLS {
-    ceph_conf = ${CEPH_CONF_FILE};
-    userid = admin;
-}
-
-CACHEINODE {
-        Dir_Max = 1;
-        Dir_Chunk = 0;
-
-        Cache_FDs = false;
-
-        NParts = 1;
-        Cache_Size = 1;
-}
-
-EXPORT_DEFAULTS {
-        Attr_Expiration_Time = 0;
-}
-
-%url rados://${CEPHFS_DATA_POOL}/ganesha-export-index
-EOF
-    else
-        sudo touch /etc/ganesha/export.d/INDEX.conf
-        echo "%include /etc/ganesha/export.d/INDEX.conf" | sudo tee /etc/ganesha/ganesha.conf
-    fi
-}
-
-function cleanup_nfs_ganesha {
-    sudo systemctl stop nfs-ganesha
-    sudo systemctl disable nfs-ganesha
-    sudo uninstall_package nfs-ganesha nfs-ganesha-ceph libntirpc3 nfs-ganesha-rados-urls nfs-ganesha-vfs
 }
 
 function configure_ceph_embedded_manila {
@@ -958,19 +887,6 @@ EOF
     sudo dnf config-manager --add-repo ceph.repo
 }
 
-function dnf_add_repository_nfsganesha {
-    local repo=""
-
-    case $ganesha_release in
-      3.*)
-        repo="centos-release-nfs-ganesha30" ;;
-      *)
-        repo="centos-release-nfs-ganesha4" ;;
-    esac
-
-    sudo dnf -y install ${repo}
-}
-
 # configure_repo_ceph() - Configure Ceph repositories
 # Usage: configure_repo_ceph <package_release>
 # - package_release: to override the os_RELEASE variable
@@ -1009,44 +925,11 @@ function cleanup_repo_ceph {
     fi
 }
 
-# configure_repo_nfsganesha() - Configure NFS Ganesha repositories
-function configure_repo_nfsganesha {
-    if is_ubuntu; then
-        # NOTE(gouthamr): Ubuntu PPAs contain the latest build from each major
-        # version; we can't use a build microversion unlike el8/el9 builds
-        if [[ $GANESHA_RELEASE =~ 3 ]]; then
-            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
-            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
-        elif [[ $GANESHA_RELEASE =~ 4 ]]; then
-            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-4
-            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-4
-        else
-            die $LINENO "NFS-Ganesha $GANESHA_RELEASE is not supported by the Ceph plugin for Devstack"
-        fi
-        sudo apt-get -y update
-    elif is_fedora; then
-        dnf_add_repository_nfsganesha
-    fi
-}
-
-# cleanup_repo_nfsganesha() - Remove NFS Ganesha repositories
-# Usage: cleanup_repo_nfsganesha
-function cleanup_repo_nfsganesha {
-    if is_ubuntu; then
-        sudo rm -rf "/etc/apt/sources.list.d/nfs-ganesha-ubuntu*"
-    elif is_fedora; then
-        sudo rm -rf /etc/yum.repos.d/nfs-ganesha.repo
-    fi
-}
-
 function setup_packages_for_manila_on_ubuntu {
     CEPH_PACKAGES="${CEPH_PACKAGES} ceph-mds libcephfs2"
 
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        configure_repo_nfsganesha
-        LIBNTIRPC_PACKAGE="libntirpc${GANESHA_RELEASE:0:1}"
-        CEPH_PACKAGES="${CEPH_PACKAGES} $LIBNTIRPC_PACKAGE \
-          nfs-ganesha nfs-ganesha-ceph nfs-ganesha-rados-urls nfs-ganesha-vfs"
+        install_nfs_ganesha
     fi
 
     if python3_enabled; then
@@ -1056,9 +939,7 @@ function setup_packages_for_manila_on_ubuntu {
 
 function setup_packages_for_manila_on_fedora_family {
     if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-        configure_repo_nfsganesha
-        CEPH_PACKAGES="${CEPH_PACKAGES} nfs-ganesha nfs-ganesha-ceph \
-           nfs-ganesha-rados-urls nfs-ganesha-vfs"
+        install_nfs_ganesha
     fi
 }
 
@@ -1175,8 +1056,7 @@ function stop_ceph {
     fi
     if is_ceph_enabled_for_service manila; then
         if [ $MANILA_CEPH_DRIVER == 'cephfsnfs' ]; then
-            sudo systemctl stop nfs-ganesha
-            sudo systemctl disable nfs-ganesha
+            stop_nfs_ganesha
         fi
         sudo systemctl stop ceph-mds@${MDS_ID}
         sudo systemctl disable ceph-mds@${MDS_ID}
