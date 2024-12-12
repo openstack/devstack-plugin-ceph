@@ -89,7 +89,7 @@
     description: Test CephFS NFS (DHSS=False) in a Multinode devstack env
     vars:
       devstack_localrc:
-        CEPH_INGRESS_IP: "{{hostvars['controller'].ansible_default_ipv6.address}}"
+        CEPH_INGRESS_IP: "{{ hostvars['controller']['nodepool']['private_ipv4'] }}"
 
 
 - job:
