@@ -150,8 +150,6 @@
       jobs:
         - devstack-plugin-ceph-tempest-py3:
             voting: false
-        - devstack-plugin-ceph-tempest-cephadm:
-            voting: false
         - devstack-plugin-ceph-multinode-tempest-py3
         - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm
         - devstack-plugin-ceph-cephfs-native:
