@@ -662,6 +662,14 @@ function set_min_client_version {
     fi
 }
 
+function set_memory_config {
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config get osd osd_memory_target
+    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+        --keyring $CEPH_KEYRING -- ceph config set osd osd_memory_target \
+        2147483648
+}
+
 # import_libvirt_secret_ceph() - Imports Cinder user key into libvirt
 # so it can connect to the Ceph cluster while attaching a Cinder block device
 function import_libvirt_secret_ceph {

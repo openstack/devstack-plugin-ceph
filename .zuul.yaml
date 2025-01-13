@@ -16,7 +16,7 @@
       - ^.*\.rst$
       - ^doc/.*$
       - ^tox.ini$
-    timeout: 7200
+    timeout: 10800
     vars:
       configure_swap_size: 8192
       tempest_concurrency: 3

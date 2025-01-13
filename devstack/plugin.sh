@@ -15,6 +15,7 @@ elif [[ "$1" == "stack" && "$2" == "install" ]]; then
         # Perform installation of service source
         echo_summary "[cephadm] Installing ceph"
         install_ceph
+        set_memory_config
         set_min_client_version
     else
         echo "[CEPHADM] Remote Ceph: Skipping install"
