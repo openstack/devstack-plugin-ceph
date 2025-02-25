@@ -27,6 +27,7 @@
         TEMPEST_RUN_VALIDATION: True
         MYSQL_REDUCE_MEMORY: True
         DISABLE_CEPHADM_POST_DEPLOY: True
+        TEMPEST_EXTEND_ATTACHED_ENCRYPTED_VOLUME: True
       devstack_plugins:
         devstack-plugin-ceph: https://opendev.org/openstack/devstack-plugin-ceph
       devstack_services:
