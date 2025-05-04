@@ -472,6 +472,26 @@ function configure_rgw_ceph_section {
     done
 }
 
+# Deploy rbd-mirror on the current site
+#
+# Note:
+#
+# One-way Replication
+# - When data is mirrored from a primary cluster to a secondary cluster,
+#   the rbd-mirror daemon runs only on the secondary cluster.
+#
+# Two-way Replication
+# - When data is mirrored from a primary cluster to a secondary cluster,
+#   but data can be promoted/demoted (switching the role of primary and
+#   secondary cluster), the rbd-mirror daemon runs on both clusters.
+
+function rbd_mirror {
+
+    $SUDO "$CEPHADM" shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+        --keyring $CEPH_KEYRING -- ceph orch apply rbd-mirror \
+        "--placement=$HOSTNAME count:1"
+}
+
 # Install ceph: add RGW
 function rgw {
     configure_ceph_embedded_rgw
@@ -516,6 +536,10 @@ function enable_services {
         rgw|RGW)
             echo "[CEPHADM] Deploying RGW on node $HOSTNAME"
             rgw
+            ;;
+        rbdmirror|RBDMIRROR)
+            echo "[CEPHADM] Deploying RBD-MIRROR on node $HOSTNAME"
+            rbd_mirror
             ;;
         esac
     done
@@ -733,6 +757,8 @@ function configure_ceph {
     fi
 
     [ "$ENABLE_CEPH_RGW" == "True" ] && SERVICES+=('rgw')
+
+    [ "$ENABLE_CEPH_RBD_MIRROR" == "True" ] && SERVICES+=('rbdmirror')
 
     enable_services
     if [[ "$REMOTE_CEPH" = "False" ]]; then
