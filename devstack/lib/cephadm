@@ -17,12 +17,20 @@
 XTRACE=$(set +o | grep xtrace)
 set +o xtrace
 
+# DEPLOY 2 CEPH CLUSTERS
+MULTI_CEPH=${MULTI_CEPH:-False}
+
 # GENERIC CEPHADM INTERNAL OPTIONS, DO NOT EDIT
 CEPH_RELEASE=${CEPH_RELEASE:-tentacle}
 CEPH_PUB_KEY="/etc/ceph/ceph.pub"
+CEPH2_PUB_KEY="/etc/ceph2/ceph.pub"
 CEPH_CONFIG="/etc/ceph/ceph.conf"
+CEPH2_CONFIG="/etc/ceph2/ceph.conf"
 BOOTSTRAP_CONFIG="$HOME/bootstrap_ceph.conf"
 CEPH_KEYRING="/etc/ceph/ceph.client.admin.keyring"
+CEPH2_KEYRING="/etc/ceph2/ceph.client.admin.keyring"
+CEPH2_IP="127.0.0.1"
+CEPH2_FSID=$(uuidgen)
 TARGET_BIN=/usr/bin
 # TOGGLED IN THE CI TO SAVE RESOURCES
 DISABLE_CEPHADM_POST_DEPLOY=${DISABLE_CEPHADM_POST_DEPLOY:-False}
@@ -37,6 +45,7 @@ else
     FSID=$(cat $CEPH_CONFIG | grep fsid | awk 'BEGIN { RS = "fsid = "} ; { print $0 }' - )
 fi
 KEY_EXPORT_DIR="/etc/ceph"
+KEY2_EXPORT_DIR="/etc/ceph2"
 KEYS=("client.openstack") # at least the client.openstack default key should be created
 MIN_OSDS=1
 SERVICES=()
@@ -54,9 +63,12 @@ RGW_PORT=8080
 
 # CLIENT CONFIG
 CEPH_CLIENT_CONFIG=$HOME/ceph_client.conf
+CEPH2_CLIENT_CONFIG=$HOME/ceph2_client.conf
 CEPH_CONF_DIR=${CEPH_CONF_DIR:-/etc/ceph}
+CEPH2_CONF_DIR=${CEPH2_CONF_DIR:-/etc/ceph2}
 # The resulting client config pointed by the other clients
 CEPH_CONF_FILE=${CEPH_CONF_FILE:-$CEPH_CONF_DIR/ceph.conf}
+CEPH2_CONF_FILE=${CEPH2_CONF_FILE:-$CEPH2_CONF_DIR/ceph.conf}
 
 # LOG(s) and EXPORTED CONFIG FILES
 EXPORT=$HOME/ceph_export.yml
@@ -90,7 +102,9 @@ GLANCE_RGW_BACKEND=${GLANCE_RGW_BACKEND:-False}
 # Cinder DEFAULTS
 CINDER_CEPH_POOL=${CINDER_CEPH_POOL:-volumes}
 CINDER_CEPH_USER=${CINDER_CEPH_USER:-cinder}
+CINDER_CEPH2_USER=${CINDER_CEPH2_USER:-cinder2}
 CINDER_CEPH_UUID=${CINDER_CEPH_UUID:-$(uuidgen)}
+CINDER_CEPH2_UUID=${CINDER_CEPH2_UUID:-$(uuidgen)}
 # Enables new features such as Clone v2 API, which allows proper handling of
 # deleting snapshots with child clone images.
 CEPH_MIN_CLIENT_VERSION=${CEPH_MIN_CLIENT_VERSION:-mimic}
@@ -237,36 +251,67 @@ function start_ceph {
 
         test -e $CEPH_CONFIG
         test -e $CEPH_KEYRING
-
-        if [ "$CEPHADM_DEV_OSD" == 'True' ]; then
-            create_osd_dev
-        fi
-        # Wait cephadm backend to be operational
-        # and add osds via drivegroups
-        sleep "$SLEEP"
-        add_osds
     fi
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO "$CEPHADM" --image "$CONTAINER_IMAGE" \
+            bootstrap \
+            --fsid $CEPH2_FSID \
+            --config "$BOOTSTRAP_CONFIG" \
+            --output-config $CEPH2_CONFIG \
+            --output-keyring $CEPH2_KEYRING \
+            --output-pub-ssh-key $CEPH2_PUB_KEY \
+            --allow-overwrite \
+            --allow-fqdn-hostname \
+            --skip-monitoring-stack \
+            --skip-dashboard \
+            --single-host-defaults \
+            --skip-firewalld \
+            --skip-mon-network \
+            --mon-ip "$CEPH2_IP"
+    fi
+
+    if [ "$CEPHADM_DEV_OSD" == 'True' ]; then
+        if [[ "$MULTI_CEPH" == 'True' ]]; then
+            create_osd_dev primary
+            create_osd_dev secondary
+        else
+            create_osd_dev dev
+        fi
+    fi
+    # Wait cephadm backend to be operational
+    # and add osds via drivegroups
+    sleep "$SLEEP"
+    add_osds
 }
 
 # Install ceph: create a loopback device to be used as osd
 function create_osd_dev {
-    sudo dd if=/dev/zero of=$TARGET_DEV_OSD_DIR/ceph-osd.img bs=1 count=0 seek="$CEPH_LOOPBACK_DISK_SIZE"
-    osd_dev=$(sudo losetup -f --show $TARGET_DEV_OSD_DIR/ceph-osd.img)
+    local SITE=$1
+    local OSD_IMG="ceph-osd-${SITE}.img"
+    local VG="ceph_vg_${SITE}"
+    local LV="ceph_lv_data_${SITE}"
+    sudo dd if=/dev/zero of=$TARGET_DEV_OSD_DIR/$OSD_IMG bs=1 count=0 seek="$CEPH_LOOPBACK_DISK_SIZE"
+    osd_dev=$(sudo losetup -f --show $TARGET_DEV_OSD_DIR/$OSD_IMG)
     sudo pvcreate $osd_dev
-    sudo vgcreate ceph_vg $osd_dev
-    sudo lvcreate -n ceph_lv_data -l +100%FREE ceph_vg
-    DEVICES+=("/dev/ceph_vg/ceph_lv_data")
+    sudo vgcreate $VG $osd_dev
+    sudo lvcreate -n $LV -l +100%FREE $VG
+    DEVICES+=("/dev/${VG}/${LV}")
 }
 
 # cleanup ceph: delete the osd file and release the loopback device
 function delete_osd_dev {
-    if [ $(sudo lvs --noheadings -o lv_path -S lv_name=ceph_lv_data) ]; then
-        sudo lvremove --force /dev/ceph_vg/ceph_lv_data
-        sudo vgremove --force ceph_vg
-        osd_dev=$(sudo losetup -j $TARGET_DEV_OSD_DIR/ceph-osd.img -l -n -O NAME)
+    local SITE=$1
+    local OSD_IMG="ceph-osd-${SITE}.img"
+    local VG="ceph_vg_${SITE}"
+    local LV="ceph_lv_data_${SITE}"
+    if [ $(sudo lvs --noheadings -o lv_path -S lv_name=$LV) ]; then
+        sudo lvremove --force /dev/$VG/$LV
+        sudo vgremove --force $VG
+        osd_dev=$(sudo losetup -j $TARGET_DEV_OSD_DIR/$OSD_IMG -l -n -O NAME)
         sudo pvremove --force $osd_dev
         sudo losetup -d $osd_dev
-        sudo rm -f $TARGET_DEV_OSD_DIR/ceph-osd.img
+        sudo rm -f $TARGET_DEV_OSD_DIR/$OSD_IMG
         sudo partprobe
         DEVICES=()
     fi
@@ -281,8 +326,16 @@ function add_osds {
     else
         for item in "${DEVICES[@]}"; do
             echo "Creating osd $item on node $HOSTNAME"
-            $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
-                --keyring $CEPH_KEYRING -- ceph orch daemon add osd "$HOSTNAME:$item"
+            local OSD_FSID=$FSID
+            local OSD_CONFIG=$CEPH_CONFIG
+            local OSD_KEYRING=$CEPH_KEYRING
+            if [[ $item =~ "secondary" ]]; then
+                OSD_FSID=$CEPH2_FSID
+                OSD_CONFIG=$CEPH2_CONFIG
+                OSD_KEYRING=$CEPH2_KEYRING
+            fi
+            $SUDO "$CEPHADM" shell --fsid $OSD_FSID --config $OSD_CONFIG \
+                --keyring $OSD_KEYRING -- ceph orch daemon add osd "$HOSTNAME:$item"
         done
     fi
 
@@ -297,6 +350,19 @@ function add_osds {
     done
     echo "[CEPHADM] OSD(s) deployed: $num_osds"
 
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        while [ "$ATTEMPTS" -ne 0 ]; do
+            num_osds_secondary=$($SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+                --keyring $CEPH2_KEYRING -- ceph -s -f json | jq '.osdmap | .num_up_osds')
+            if [ "$num_osds_secondary" -ge "$MIN_OSDS" ]; then
+                break;
+            fi
+            ATTEMPTS=$(("$ATTEMPTS" - 1))
+            sleep 1
+        done
+        echo "[CEPHADM] OSD(s) deployed for secondary cluster: $num_osds_secondary"
+    fi
+
     # [ "$num_osds" -lt "$MIN_OSDS" ] && exit 255
 }
 
@@ -310,9 +376,20 @@ function add_pools {
             --keyring $CEPH_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
             "$DEFAULT_PGP_NUM" replicated --autoscale-mode on
 
+        if [[ "$MULTI_CEPH" == 'True' && $pool == "volumes" ]]; then
+            $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+                --keyring $CEPH2_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
+                "$DEFAULT_PGP_NUM" replicated --autoscale-mode on
+        fi
+
         # set the application to the pool (which also means rbd init the pool)
         $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
             --keyring $CEPH_KEYRING -- ceph osd pool application enable "$pool" rbd
+
+        if [[ "$MULTI_CEPH" == 'True' && $pool == "volumes" ]]; then
+            $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+                --keyring $CEPH2_KEYRING -- ceph osd pool application enable "$pool" rbd
+        fi
     done
 }
 
@@ -339,13 +416,22 @@ function _create_key {
         osd_caps="allow class-read object_prefix rbd_children, $caps"
     fi
 
+
     $SUDO "$CEPHADM" shell -v "$KEY_EXPORT_DIR:$KEY_EXPORT_DIR" --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph auth get-or-create "$name" mgr "allow rw" mon "allow r" osd "$osd_caps" \
         -o "$KEY_EXPORT_DIR/ceph.$name.keyring"
 
-
     $SUDO chown ${STACK_USER}:$(id -g -n $whoami) \
         ${CEPH_CONF_DIR}/ceph.$name.keyring
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO "$CEPHADM" shell -v "$KEY2_EXPORT_DIR:$KEY2_EXPORT_DIR" --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+            --keyring $CEPH2_KEYRING -- ceph auth get-or-create "$name" mgr "allow rw" mon "allow r" osd "$osd_caps" \
+            -o "$KEY2_EXPORT_DIR/ceph.$name.keyring"
+
+        $SUDO chown ${STACK_USER}:$(id -g -n $whoami) \
+            ${CEPH2_CONF_DIR}/ceph.$name.keyring
+    fi
 }
 
 # Install ceph: create one or more keyrings
@@ -568,6 +654,20 @@ admin socket = /var/run/ceph/\$cluster-\$type.\$id.\$pid.\$cctid.asok
 log file = $RBD_CLIENT_LOG
 EOF
 
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        echo "Dump the minimal ceph.conf for secondary cluster"
+        cp $CEPH2_CONFIG "$CEPH2_CLIENT_CONFIG"
+
+        cat >> "$CEPH2_CLIENT_CONFIG" <<-EOF
+[client.libvirt]
+admin socket = /var/run/ceph/\$cluster-\$type.\$id.\$pid.\$cctid.asok
+log file = $RBD_CLIENT_LOG
+[client.cinder2]
+keyring = /etc/ceph2/ceph.client.cinder2.keyring
+EOF
+    fi
+
     if [ "$CEPHFS_CLIENT" -eq 1 ]; then
         cat >> "$CEPH_CLIENT_CONFIG" <<-EOF
 [$CEPHFS_CLIENT_NAME]
@@ -584,6 +684,9 @@ EOF
     # For this reason we need to override the content of the
     # generated (minimal) ceph.conf with the client part.
     $SUDO cp $CEPH_CLIENT_CONFIG $CEPH_CONF_FILE
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO cp $CEPH2_CLIENT_CONFIG $CEPH2_CONF_FILE
+    fi
 }
 
 ## Remove ceph
@@ -598,21 +701,25 @@ function stop_ceph {
         CEPHADM=${TARGET_BIN}/cephadm
     fi
 
-    cluster_deleted=0
-    timeout=3
-    while : ; do
-        CLUSTER_FSID=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid' | tr -d \")
-        if [[ -n "$CLUSTER_FSID" ]]; then
-            sudo cephadm rm-cluster --zap-osds --fsid $CLUSTER_FSID --force
-        else
-            cluster_deleted=1
-            echo "[CEPHADM] Cluster deleted"
-        fi
-        $(( timeout-- ))
+    CLUSTER_FSIDS=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid' | tr -d \")
+    for CLUSTER in $CLUSTER_FSIDS; do
+        cluster_deleted=0
+        timeout=3
+        while : ; do
+            CLUSTER_FSIDS=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid' | tr -d \")
+            if [[ $CLUSTER_FSIDS =~ $CLUSTER ]]; then
+                sudo cephadm rm-cluster --zap-osds --fsid $CLUSTER --force
+            else
+                cluster_deleted=1
+                echo "[CEPHADM] Cluster deleted"
+            fi
 
-        [[ "$cluster_deleted" -eq 0 && "$timeout" -eq 0 ]] && \
-            echo "[CEPHADM] Error deleting the cluster" && exit 255
-        [[ "$cluster_deleted" -eq 1 || "$timeout" -eq 0 ]] && break
+            $(( timeout-- ))
+
+            [[ "$cluster_deleted" -eq 0 && "$timeout" -eq 0 ]] && \
+                echo "[CEPHADM] Error deleting the cluster" && exit 255
+            [[ "$cluster_deleted" -eq 1 || "$timeout" -eq 0 ]] && break
+        done
     done
 }
 
@@ -713,17 +820,25 @@ function import_libvirt_secret_ceph {
 
     [ "$ENABLE_CEPH_NOVA" == "False" ] && return;
 
-    NOVA_VIRSH_SECRET=$($SUDO cat ${CEPH_CONF_DIR}/ceph.client.${CINDER_CEPH_USER}.keyring | awk '/key/ {print $3}')
+    local CEPH_USER=$1
+    local CONF_DIR=$CEPH_CONF_DIR
+    local CEPH_UUID=$CINDER_CEPH_UUID
+    if [[ $CEPH_USER == "cinder2" ]]; then
+        CONF_DIR=$CEPH2_CONF_DIR
+        CEPH_UUID=$CINDER_CEPH2_UUID
+    fi
+
+    NOVA_VIRSH_SECRET=$($SUDO cat ${CONF_DIR}/ceph.client.${CEPH_USER}.keyring | awk '/key/ {print $3}')
     cat <<EOF | sudo tee secret.xml>/dev/null
     <secret ephemeral='no' private='no'>
-    <uuid>${CINDER_CEPH_UUID}</uuid>
+    <uuid>${CEPH_UUID}</uuid>
     <usage type='ceph'>
-        <name>client.${CINDER_CEPH_USER} secret</name>
+        <name>client.${CEPH_USER} secret</name>
     </usage>
     </secret>
 EOF
     $SUDO virsh secret-define --file secret.xml # 2>/dev/null
-    $SUDO virsh secret-set-value --secret ${CINDER_CEPH_UUID} \
+    $SUDO virsh secret-set-value --secret ${CEPH_UUID} \
         --base64 ${NOVA_VIRSH_SECRET} # 2>/dev/null
 
     $SUDO rm -f secret.xml
@@ -731,10 +846,12 @@ EOF
 
 # _undefine_virsh_secret() - Undefine Cinder key secret from libvirt
 function _undefine_virsh_secret {
-    local virsh_uuid
-    virsh_uuid=$($SUDO virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }')
-    echo $virsh_uuid
-    $SUDO virsh secret-undefine ${virsh_uuid} &>/dev/null
+    local virsh_uuids
+    virsh_uuids=$($SUDO virsh secret-list | awk '/^ ?[0-9a-z]/ { print $1 }' | tr -d \")
+    for virsh_uuid in $virsh_uuids; do
+        echo $virsh_uuid
+        $SUDO virsh secret-undefine ${virsh_uuid} &>/dev/null
+    done
 }
 
 function configure_ceph {
@@ -755,6 +872,9 @@ function configure_ceph {
     if is_ceph_enabled_for_service cinder; then
         POOLS+=($CINDER_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
+        if [[ "$MULTI_CEPH" == 'True' ]]; then
+            KEYS+=("client.$CINDER_CEPH2_USER")
+        fi
     fi
 
     if is_ceph_enabled_for_service c-bak; then
@@ -765,6 +885,9 @@ function configure_ceph {
     if is_ceph_enabled_for_service nova; then
         POOLS+=($NOVA_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
+        if [[ "$MULTI_CEPH" == 'True' ]]; then
+            KEYS+=("client.$CINDER_CEPH2_USER")
+        fi
         config_nova
     fi
 
@@ -778,7 +901,11 @@ function configure_ceph {
         create_keys
     fi
     client_config
-    import_libvirt_secret_ceph
+
+    import_libvirt_secret_ceph $CINDER_CEPH_USER
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        import_libvirt_secret_ceph $CINDER_CEPH2_USER
+    fi
 
     if [[ "$DISABLE_CEPHADM_POST_DEPLOY" == "True" ]]; then
         disable_cephadm
@@ -797,7 +924,12 @@ function cleanup_ceph {
         echo "Remote Ceph cluster, skipping stop_ceph and delete_osd_dev"
     else
         stop_ceph
-        delete_osd_dev
+        if [[ "$MULTI_CEPH" == 'True' ]]; then
+            delete_osd_dev primary
+            delete_osd_dev secondary
+        else
+            delete_osd_dev dev
+        fi
     fi
     # purge ceph config file and keys
     $SUDO rm -f ${CEPH_CONF_DIR}/*
@@ -826,6 +958,14 @@ function disable_cephadm {
 
     $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph mgr module disable cephadm
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+            --keyring $CEPH2_KEYRING -- ceph orch set backend
+
+        $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+            --keyring $CEPH2_KEYRING -- ceph mgr module disable cephadm
+    fi
 }
 
 # is_ceph_enabled_for_service() - checks whether the OpenStack service
