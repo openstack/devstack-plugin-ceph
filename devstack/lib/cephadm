@@ -588,6 +588,12 @@ function rbd_mirror {
     $SUDO "$CEPHADM" shell --fsid "$FSID" --config "$CEPH_CONFIG" \
         --keyring $CEPH_KEYRING -- ceph orch apply rbd-mirror \
         "--placement=$HOSTNAME count:1"
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO "$CEPHADM" shell --fsid "$CEPH2_FSID" --config "$CEPH2_CONFIG" \
+            --keyring $CEPH2_KEYRING -- ceph orch apply rbd-mirror \
+            "--placement=$HOSTNAME count:1"
+    fi
 }
 
 # Install ceph: add RGW
@@ -910,12 +916,40 @@ function configure_ceph {
     if [[ "$DISABLE_CEPHADM_POST_DEPLOY" == "True" ]]; then
         disable_cephadm
     fi
+
+    if [[ "$MULTI_CEPH" == "True" && "$ENABLE_CEPH_RBD_MIRROR" == "True" ]]; then
+        enable_mirror image
+        bootstrap_peers
+    fi
 }
 
 # Hack: remove this function at some point
 function configure_ceph_manila {
     # noop
     :
+}
+
+function enable_mirror {
+    local MODE=$1
+    $SUDO "$CEPHADM" shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+        --keyring $CEPH_KEYRING -- rbd mirror pool enable \
+        $CINDER_CEPH_POOL $MODE
+
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        $SUDO "$CEPHADM" shell --fsid "$CEPH2_FSID" --config "$CEPH2_CONFIG" \
+            --keyring $CEPH2_KEYRING -- rbd mirror pool enable \
+            $CINDER_CEPH_POOL $MODE
+    fi
+}
+
+function bootstrap_peers {
+    $SUDO "$CEPHADM" shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+        --keyring $CEPH_KEYRING -- rbd mirror pool peer bootstrap create \
+        --site-name $FSID $CINDER_CEPH_POOL | awk 'END{print}' \
+        > "$HOME/token_file"
+    $SUDO "$CEPHADM" shell --fsid "$CEPH2_FSID" --config "$CEPH2_CONFIG" \
+        --keyring $CEPH2_KEYRING -- rbd mirror pool peer bootstrap import \
+        --site-name $CEPH2_FSID $CINDER_CEPH_POOL - < "$HOME/token_file"
 }
 
 function cleanup_ceph {
