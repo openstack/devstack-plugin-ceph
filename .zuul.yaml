@@ -2,6 +2,7 @@
     name: devstack-plugin-ceph-tempest-py3-base
     abstract: true
     parent: tempest-full-py3
+    nodeset: devstack-single-node-debian-bookworm
     description: |
       Base integration tests that runs with the ceph devstack plugin and py3.
       Former names for this job where:
@@ -96,6 +97,7 @@
 - job:
     name: devstack-plugin-ceph-multinode-tempest-py3
     parent: tempest-multinode-full-py3
+    nodeset: devstack-two-node-debian-bookworm
     description: |
       Integration tests that runs the ceph device plugin across multiple
       nodes on py3. The Ceph deployment strategy used by this job is Cephadm.
