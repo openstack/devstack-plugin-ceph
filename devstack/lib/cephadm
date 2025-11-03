@@ -53,7 +53,7 @@ CEPHADM_DEV_OSD=${CEPHADM_DEV_OSD:-"True"}
 CEPH_LOOPBACK_DISK_SIZE=${CEPH_LOOPBACK_DISK_SIZE:-30G}
 TARGET_DEV_OSD_DIR=${TARGET_DEV_OSD_DIR:-"/opt/stack"}
 
-# POOLS
+# POOLS DEFAULT PG/PGP NUM
 DEFAULT_PG_NUM=${DEFAULT_PG_NUM:-8}
 DEFAULT_PGP_NUM=${DEFAULT_PGP_NUM:-8}
 
@@ -76,14 +76,16 @@ MDS_LOG_FILE="$HOME/mds_log.conf"
 MDS_LOGS=${MDS_LOGS:-"False"}
 
 # MANILA DEFAULTS
+FSNAME=${FSNAME:-'cephfs'}
 MANILA_CEPH_USER=${MANILA_CEPH_USER:-manila}
+MANILA_EC_ENABLE=${MANILA_EC_ENABLE:-False}
+MANILA_EC_DATA_POOL=${MANILA_EC_DATA_POOL:-${FSNAME}_ec_data}
 
 # NFS OPTIONS: Only apply when ENABLE_CEPH_MANILA=True
 # Whether or not cephadm should deploy/manage NFS-Ganesha? If set to False,
 # we'll deploy a "standalone" NFS Ganesha instead, not managed by cephadm.
 CEPHADM_DEPLOY_NFS=${CEPHADM_DEPLOY_NFS:-True}
 # Clustered NFS Options
-FSNAME=${FSNAME:-'cephfs'}
 NFS_PORT=${NFS_PORT:-2049}
 CEPHFS_CLIENT=0
 CEPHFS_CLIENT_NAME="client.$MANILA_CEPH_USER"
@@ -96,6 +98,15 @@ VIP=${CEPH_INGRESS_IP:-$HOST_IP}
 GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
 GLANCE_CEPH_POOL=${GLANCE_CEPH_POOL:-images}
 GLANCE_RGW_BACKEND=${GLANCE_RGW_BACKEND:-False}
+GLANCE_EC_ENABLE=${GLANCE_EC_ENABLE:-False}
+GLANCE_EC_DATA_POOL=${GLANCE_EC_DATA_POOL:-images_data}
+
+# Erasure coding profile for AIO/devstack. Default Ceph EC (k=2,m=2, host
+# failure domain) cannot place objects on a single-OSD, single-host cluster.
+# k+m OSDs with crush-failure-domain=osd is the minimum that works locally.
+EC_PROFILE=${EC_PROFILE:-devstack}
+EC_K=${EC_K:-2}
+EC_M=${EC_M:-1}
 
 # Cinder DEFAULTS
 CINDER_CEPH_POOL=${CINDER_CEPH_POOL:-volumes}
@@ -194,12 +205,15 @@ function get_cephadm {
 }
 
 # Pre-install ceph: bootstrap config
+# NOTE: enable optimization for ec pools by default
+# https://docs.ceph.com/en/latest/rados/operations/erasure-code/#erasure-coding-optimizations
 function bootstrap_config {
     cat <<EOF > "$BOOTSTRAP_CONFIG"
 [global]
 log to file = true
 osd crush chooseleaf type = 0
 osd_pool_default_size = 1
+osd_pool_default_flag_ec_optimizations = true
 [mon]
 mon_warn_on_pool_no_redundancy = False
 [osd]
@@ -271,6 +285,14 @@ function start_ceph {
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             create_osd_dev primary
             create_osd_dev secondary
+        elif _ec_enabled; then
+            # EC pools need k+m distinct OSDs (crush-failure-domain=osd).
+            local n
+            for n in $(seq 0 $((EC_K + EC_M - 1))); do
+                create_osd_dev "dev${n}"
+            done
+            MIN_OSDS=$((EC_K + EC_M))
+            ATTEMPTS=60
         else
             create_osd_dev dev
         fi
@@ -362,15 +384,43 @@ function add_osds {
     # [ "$num_osds" -lt "$MIN_OSDS" ] && exit 255
 }
 
+# True when any service requested an erasure-coded data pool.
+function _ec_enabled {
+    [[ "$GLANCE_EC_ENABLE" == "True" || "$MANILA_EC_ENABLE" == "True" ]]
+}
+
+# Create an EC profile that can place chunks on distinct OSDs of one host.
+function _ensure_ec_profile {
+    $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" \
+        --config "$CEPH_CONFIG" --keyring $CEPH_KEYRING -- \
+        ceph osd erasure-code-profile set "$EC_PROFILE" \
+        k="$EC_K" m="$EC_M" crush-failure-domain=osd
+}
+
 # Install ceph: create and enable pools
 function add_pools {
 
+    local -n POOLS=$1
+    local MODE=$2
+
     [ "${#POOLS[@]}" -eq 0 ] && return;
+    # return if mode is not valid (only replicated and erasure are supported)
+    [ "$MODE" = "replicated" ] || [ "$MODE" = "erasure" ] || return
+
+    if [ "$MODE" = "erasure" ]; then
+        _ensure_ec_profile
+    fi
 
     for pool in "${POOLS[@]}"; do
-        $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid $FSID --config $CEPH_CONFIG \
-            --keyring $CEPH_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
-            "$DEFAULT_PGP_NUM" replicated --autoscale-mode on
+        if [ "$MODE" = "erasure" ]; then
+            $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+                --keyring $CEPH_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
+                "$DEFAULT_PGP_NUM" erasure "$EC_PROFILE" --autoscale-mode on
+        else
+            $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+                --keyring $CEPH_KEYRING -- ceph osd pool create "$pool" "$DEFAULT_PG_NUM" \
+                "$DEFAULT_PGP_NUM" "$MODE" --autoscale-mode on
+        fi
 
         if [[ "$MULTI_CEPH" == 'True' && $pool == "volumes" ]]; then
             $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
@@ -379,12 +429,18 @@ function add_pools {
         fi
 
         # set the application to the pool (which also means rbd init the pool)
-        $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid $FSID --config $CEPH_CONFIG \
+        $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" --config "$CEPH_CONFIG" \
             --keyring $CEPH_KEYRING -- ceph osd pool application enable "$pool" rbd
 
         if [[ "$MULTI_CEPH" == 'True' && $pool == "volumes" ]]; then
             $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
                 --keyring $CEPH2_KEYRING -- ceph osd pool application enable "$pool" rbd
+        fi
+
+        # note: this is a per-pool option and can't be set via global config
+        if [ "$MODE" = "erasure" ]; then
+            $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" --config "$CEPH_CONFIG" \
+                --keyring $CEPH_KEYRING -- ceph osd pool set "$pool" allow_ec_overwrites true
         fi
     done
 }
@@ -392,7 +448,9 @@ function add_pools {
 # Utility: build caps according to the generated pools
 function build_caps {
     local CAPS=""
-    for pool in "${POOLS[@]}"; do
+    # Note if POOLS_EC is empty or doesn't exist, it expands to nothing and the
+    # loop result is backward compatible with the replicated only scenario
+    for pool in "${POOLS_REPLICATED[@]}" "${POOLS_EC[@]}"; do
         caps="allow rwx pool="$pool
         CAPS+=$caps,
     done
@@ -405,7 +463,10 @@ function _create_key {
     local caps
     local osd_caps
 
-    if [ "${#POOLS[@]}" -eq 0 ]; then
+    # In case of EC mode we always need at least a replicated pool to store
+    # metadata, so this condition is still sufficient to check which osd_caps
+    # are needed
+    if [ "${#POOLS_REPLICATED[@]}" -eq 0 ]; then
         osd_caps="allow *"
     else
         caps=$(build_caps)
@@ -445,6 +506,11 @@ function cephfs_config {
     # and the mds daemon is deployed
     $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph fs volume create "$FSNAME"
+
+    if [[ "$MANILA_EC_ENABLE" == "True" ]]; then
+        $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+            --keyring $CEPH_KEYRING -- ceph fs add_data_pool "$FSNAME" "$MANILA_EC_DATA_POOL"
+    fi
 }
 
 # Gets Ceph version in semver format (e.g. "20.2.1", "19.2.3")
@@ -810,6 +876,13 @@ function config_glance {
             iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
             iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
         fi
+        # configure rbd_store_data_pool if EC is enabled. In this case Glance
+        # needs two pools to store both data and metadata:
+        # - images: replicated pool used to store metadata
+        # - images_data: erasure code pool used to store images data
+        if [[ "$GLANCE_EC_ENABLE" == "True" ]]; then
+            iniset "$GLANCE_API_CONF" glance_store rbd_store_data_pool "$GLANCE_EC_DATA_POOL"
+        fi
     fi
 }
 
@@ -884,18 +957,25 @@ function configure_ceph {
     if is_ceph_enabled_for_service manila; then
         SERVICES+=('cephfs')
         KEYS+=("client.$MANILA_CEPH_USER")
+        if [[ "$MANILA_EC_ENABLE" == "True" ]]; then
+            POOLS_EC+=($MANILA_EC_DATA_POOL)
+        fi
     fi
 
     [ "$MANILA_CEPH_DRIVER" == "cephfsnfs" ] && SERVICES+=('nfs')
 
     if is_ceph_enabled_for_service glance; then
-        POOLS+=($GLANCE_CEPH_POOL)
+        POOLS_REPLICATED+=($GLANCE_CEPH_POOL)
         KEYS+=("client.$GLANCE_CEPH_USER")
+        if [[ "$GLANCE_EC_ENABLE" == "True" ]]; then
+            POOLS_EC+=($GLANCE_EC_DATA_POOL)
+        fi
+        # TODO review glance config here to reference data_pool
         config_glance
     fi
 
     if is_ceph_enabled_for_service cinder; then
-        POOLS+=($CINDER_CEPH_POOL)
+        POOLS_REPLICATED+=($CINDER_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             KEYS+=("client.$CINDER_CEPH2_USER")
@@ -903,12 +983,12 @@ function configure_ceph {
     fi
 
     if is_ceph_enabled_for_service c-bak; then
-        POOLS+=($CINDER_BAK_CEPH_POOL)
+        POOLS_REPLICATED+=($CINDER_BAK_CEPH_POOL)
         KEYS+=("client.$CINDER_BAK_CEPH_USER")
     fi
 
     if is_ceph_enabled_for_service nova; then
-        POOLS+=($NOVA_CEPH_POOL)
+        POOLS_REPLICATED+=($NOVA_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             KEYS+=("client.$CINDER_CEPH2_USER")
@@ -920,11 +1000,12 @@ function configure_ceph {
 
     [ "$ENABLE_CEPH_RBD_MIRROR" == "True" ] && SERVICES+=('rbdmirror')
 
-    enable_services
     if [[ "$REMOTE_CEPH" = "False" ]]; then
-        add_pools
+        add_pools POOLS_REPLICATED "replicated"
+        add_pools POOLS_EC "erasure"
         create_keys
     fi
+    enable_services
     client_config
 
     import_libvirt_secret_ceph $CINDER_CEPH_USER
@@ -980,6 +1061,11 @@ function cleanup_ceph {
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             delete_osd_dev primary
             delete_osd_dev secondary
+        elif _ec_enabled; then
+            local n
+            for n in $(seq 0 $((EC_K + EC_M - 1))); do
+                delete_osd_dev "dev${n}"
+            done
         else
             delete_osd_dev dev
         fi
