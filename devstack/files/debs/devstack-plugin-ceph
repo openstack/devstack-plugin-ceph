@@ -4,3 +4,4 @@ catatonit
 podman
 jq
 ceph-common
+nftables
