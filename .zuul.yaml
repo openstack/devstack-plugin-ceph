@@ -142,6 +142,8 @@
       jobs:
         - devstack-plugin-ceph-tempest-py3
         - devstack-plugin-ceph-multinode-tempest-py3
+        - nova-live-migration-ceph
+        - nova-ceph-multistore
         - devstack-plugin-ceph-multinode-cephfs-nfs-cephadm:
             irrelevant-files: *irrelevant-files
             voting: false
