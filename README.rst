@@ -70,6 +70,33 @@ in the ``local.conf`` file.
 
 -  Then run ``stack.sh`` and wait for the *magic* to happen :)
 
+Setup With Rados Gateway
+------------------------
+
+To setup Ceph with Rados Gateway and configure it as a Swift endpoint, you will need to enable following setting in your ``local.conf`` in addition to the settings mentioned in the previous section:
+
+::
+
+    ENABLE_CEPH_RGW=True
+
+For a full example, please see file ``./examples/ceph-with-rgw-local.conf`` in this repository.
+
+Test With Older Ceph Releases
+-----------------------------
+
+You can build devstack with older versions of ceph releases. Change the version of ceph release by overriding variable ``CONTAINER_IMAGE`` in your configuration file.
+
+Supported releases are following:
+
+::
+
+    # Change Ceph Version by changing tag in CONTAINER_IMAGE.
+    # Supported versions are:
+    #   reef: quay.io/ceph/ceph:v18
+    #   squid: quay.io/ceph/ceph:v19
+    #   tentacle: quay.io/ceph/ceph:v20
+    CONTAINER_IMAGE=quay.io/ceph/ceph:v20
+
 Known Issues / Limitations
 --------------------------
 
@@ -77,6 +104,9 @@ Known Issues / Limitations
 -  Tempest test failures when using RGW as swift endpoint
 -  Tempest fails due to verify-tempest-config erroring out, when using
    RGW as swift endpoint
+-  Ceph requires passwordless SSH access to the ``root`` user on the machine.
+   Adding ``PermitRootLogin prohibit-password`` to the sshd_config is
+   sufficient.
 
 Bugs
 ----
