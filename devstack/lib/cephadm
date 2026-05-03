@@ -207,21 +207,33 @@ EOF
 function start_ceph {
     cluster=$(sudo cephadm ls | jq '.[]' | jq 'select(.name | test("^mon*")).fsid')
     if [ -z "$cluster" ]; then
-        $SUDO "$CEPHADM" --image "$CONTAINER_IMAGE" \
-            bootstrap \
-            --fsid $FSID \
-            --config "$BOOTSTRAP_CONFIG" \
-            --output-config $CEPH_CONFIG \
-            --output-keyring $CEPH_KEYRING \
-            --output-pub-ssh-key $CEPH_PUB_KEY \
-            --allow-overwrite \
-            --allow-fqdn-hostname \
-            --skip-monitoring-stack \
-            --skip-dashboard \
-            --single-host-defaults \
-            --skip-firewalld \
-            --skip-mon-network \
-            --mon-ip "$HOST_IP"
+        local boot_attempts=3
+        while [ "$boot_attempts" -ne 0 ]; do
+            if $SUDO "$CEPHADM" --image "$CONTAINER_IMAGE" \
+                bootstrap \
+                --fsid $FSID \
+                --config "$BOOTSTRAP_CONFIG" \
+                --output-config $CEPH_CONFIG \
+                --output-keyring $CEPH_KEYRING \
+                --output-pub-ssh-key $CEPH_PUB_KEY \
+                --allow-overwrite \
+                --allow-fqdn-hostname \
+                --skip-monitoring-stack \
+                --skip-dashboard \
+                --single-host-defaults \
+                --skip-firewalld \
+                --skip-mon-network \
+                --mon-ip "$HOST_IP"; then
+                break
+            fi
+            boot_attempts=$(("$boot_attempts" - 1))
+            if [ "$boot_attempts" -eq 0 ]; then
+                echo "[CEPHADM] Bootstrap failed after retries"
+                return 1
+            fi
+            echo "[CEPHADM] Bootstrap failed, retrying ($boot_attempts attempts left)"
+            sleep "$SLEEP"
+        done
 
         test -e $CEPH_CONFIG
         test -e $CEPH_KEYRING
@@ -801,8 +813,16 @@ function cleanup_ceph {
 }
 
 function disable_cephadm {
-    $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
-        --keyring $CEPH_KEYRING -- ceph orch set backend
+    local attempts=30
+    while [ "$attempts" -ne 0 ]; do
+        if $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
+                --keyring $CEPH_KEYRING -- ceph orch set backend 2>/dev/null; then
+            break
+        fi
+        echo "[CEPHADM] Waiting for orchestrator module to be ready ($attempts attempts left)"
+        attempts=$(("$attempts" - 1))
+        sleep 1
+    done
 
     $SUDO "$CEPHADM" shell --fsid $FSID --config $CEPH_CONFIG \
         --keyring $CEPH_KEYRING -- ceph mgr module disable cephadm
