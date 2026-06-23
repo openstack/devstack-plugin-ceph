@@ -10,7 +10,8 @@
       The original job included support for an un-used tempest-dsvm-ceph-rc
       hosted at /opt/stack/new/nova/devstack/tempest-dsvm-ceph-rc.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: openstack/cinder-tempest-plugin
+        override-checkout: 1.11.0
       - openstack/devstack-plugin-ceph
     irrelevant-files: &irrelevant-files
       - ^.*\.rst$
@@ -113,7 +114,8 @@
       Integration tests that runs the ceph device plugin across multiple
       nodes on py3. The Ceph deployment strategy used by this job is Cephadm.
     required-projects:
-      - openstack/cinder-tempest-plugin
+      - name: openstack/cinder-tempest-plugin
+        override-checkout: 1.11.0
       - openstack/devstack-plugin-ceph
     timeout: 10800
     vars:
