@@ -16,44 +16,18 @@ fi
 
 if [[ "$MANILA_CEPH_DRIVER" == "cephfsnfs" && "$GANESHA_RELEASE" == "unspecified" ]]; then
     # default ganesha release based on ceph release
-    case $CEPH_RELEASE in
-    pacific)
-        GANESHA_RELEASE='3.5'
-        ;;
-    *)
-        GANESHA_RELEASE='5.0'
-        ;;
-    esac
+    GANESHA_RELEASE='5.0'
 fi
+GANESHA_MAJOR_RELEASE="${GANESHA_RELEASE:0:1}"
 
 # configure_repo_nfsganesha - Configure NFS Ganesha repositories
 function configure_repo_nfsganesha {
     if is_ubuntu; then
-        # NOTE(gouthamr): Ubuntu PPAs contain the latest build from each major
-        # version; we can't use a build microversion unlike el8/el9 builds
-        case $GANESHA_RELEASE in
-        3.*)
-            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-3.0
-            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-3.0
-            ;;
-        *)
-            GANESHA_PPA_VERSION="${GANESHA_RELEASE:0:1}"
-            sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-"$GANESHA_PPA_VERSION"
-            sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-"$GANESHA_PPA_VERSION"
-            ;;
-        esac
+        sudo add-apt-repository -y ppa:nfs-ganesha/libntirpc-${GANESHA_MAJOR_RELEASE}
+        sudo add-apt-repository -y ppa:nfs-ganesha/nfs-ganesha-${GANESHA_MAJOR_RELEASE}
         sudo apt-get -y update
     elif is_fedora; then
-        local repo=""
-        case $GANESHA_RELEASE in
-        3.*)
-            repo="centos-release-nfs-ganesha30"
-            ;;
-        *)
-            repo="centos-release-nfs-ganesha5"
-            ;;
-        esac
-        sudo dnf -y install ${repo}
+        sudo dnf -y install centos-release-nfs-ganesha${GANESHA_MAJOR_RELEASE}
     fi
 }
 
@@ -62,7 +36,7 @@ function install_nfs_ganesha {
     NFS_GANESHA_PACKAGES="nfs-ganesha nfs-ganesha-ceph \
         nfs-ganesha-rados-urls nfs-ganesha-vfs"
     if is_ubuntu; then
-        LIBNTIRPC_PACKAGE="libntirpc${GANESHA_RELEASE:0:1}"
+        LIBNTIRPC_PACKAGE="libntirpc${GANESHA_MAJOR_RELEASE}"
         NFS_GANESHA_PACKAGES="${LIBNTIRPC_PACKAGE} ${NFS_GANESHA_PACKAGES}"
     fi
     install_package $NFS_GANESHA_PACKAGES
