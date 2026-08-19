@@ -98,6 +98,7 @@ VIP=${CEPH_INGRESS_IP:-$HOST_IP}
 GLANCE_CEPH_USER=${GLANCE_CEPH_USER:-glance}
 GLANCE_CEPH_POOL=${GLANCE_CEPH_POOL:-images}
 GLANCE_RGW_BACKEND=${GLANCE_RGW_BACKEND:-False}
+# EC data pool applies only when Glance uses the Ceph RBD store (not RGW/Swift).
 GLANCE_EC_ENABLE=${GLANCE_EC_ENABLE:-False}
 GLANCE_EC_DATA_POOL=${GLANCE_EC_DATA_POOL:-images_data}
 
@@ -828,6 +829,25 @@ function install_ceph {
     start_ceph
 }
 
+# True when Glance stores images in Ceph RBD rather than RGW/Swift.
+function _is_glance_rbd_store {
+    [[ "$GLANCE_RGW_BACKEND" != "True" || "$ENABLE_CEPH_RGW" != "True" ]]
+}
+
+# Set rbd_store_data_pool on the Glance store section that actually owns the
+# RBD backend. Multi-store uses [robust_rbd]; single-store uses [glance_store].
+function _config_glance_ec_data_pool {
+    local section=$1
+
+    # Glance needs two pools when EC is enabled:
+    # - images: replicated pool used to store metadata
+    # - images_data: erasure coded pool used to store image data
+    if [[ "$GLANCE_EC_ENABLE" == "True" ]]; then
+        iniset "$GLANCE_API_CONF" "$section" rbd_store_data_pool \
+            "$GLANCE_EC_DATA_POOL"
+    fi
+}
+
 function config_glance {
     if [[ "$GLANCE_RGW_BACKEND" = "True" && "$ENABLE_CEPH_RGW" = "True" ]]; then
         # common glance accounts for swift
@@ -869,19 +889,14 @@ function config_glance {
             iniset $GLANCE_API_CONF "robust_rbd" rbd_store_ceph_conf $CEPH_CONF_FILE
             iniset $GLANCE_API_CONF "robust_rbd" rbd_store_user $GLANCE_CEPH_USER
             iniset $GLANCE_API_CONF "robust_rbd" rbd_store_pool $GLANCE_CEPH_POOL
+            _config_glance_ec_data_pool "robust_rbd"
         else
             iniset $GLANCE_API_CONF glance_store default_store rbd
             iniset $GLANCE_API_CONF glance_store stores "file, http, rbd"
             iniset $GLANCE_API_CONF glance_store rbd_store_ceph_conf $CEPH_CONF_FILE
             iniset $GLANCE_API_CONF glance_store rbd_store_user $GLANCE_CEPH_USER
             iniset $GLANCE_API_CONF glance_store rbd_store_pool $GLANCE_CEPH_POOL
-        fi
-        # configure rbd_store_data_pool if EC is enabled. In this case Glance
-        # needs two pools to store both data and metadata:
-        # - images: replicated pool used to store metadata
-        # - images_data: erasure code pool used to store images data
-        if [[ "$GLANCE_EC_ENABLE" == "True" ]]; then
-            iniset "$GLANCE_API_CONF" glance_store rbd_store_data_pool "$GLANCE_EC_DATA_POOL"
+            _config_glance_ec_data_pool "glance_store"
         fi
     fi
 }
@@ -967,10 +982,10 @@ function configure_ceph {
     if is_ceph_enabled_for_service glance; then
         POOLS_REPLICATED+=($GLANCE_CEPH_POOL)
         KEYS+=("client.$GLANCE_CEPH_USER")
-        if [[ "$GLANCE_EC_ENABLE" == "True" ]]; then
+        # EC data pools are RBD-only; skip when Glance uses RGW/Swift.
+        if [[ "$GLANCE_EC_ENABLE" == "True" ]] && _is_glance_rbd_store; then
             POOLS_EC+=($GLANCE_EC_DATA_POOL)
         fi
-        # TODO review glance config here to reference data_pool
         config_glance
     fi
 
