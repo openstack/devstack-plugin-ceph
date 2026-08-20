@@ -236,6 +236,26 @@ function start_ceph {
     fi
 }
 
+# CVE-2025-30156 (v20.2.4/v19.2.6) drops the legacy "aes" CephX cipher for
+# "aes256k", but the trixie host client is Reef and only speaks "aes". Allow
+# "aes" so services can authenticate. The option is absent on unpatched
+# images (where "aes" already works), so a failure here is logged, not fatal.
+function allow_legacy_cephx_cipher {
+    _set_legacy_cephx_cipher "$FSID" "$CEPH_CONFIG" "$CEPH_KEYRING"
+    if [[ "$MULTI_CEPH" == 'True' ]]; then
+        _set_legacy_cephx_cipher "$CEPH2_FSID" "$CEPH2_CONFIG" "$CEPH2_KEYRING"
+    fi
+}
+
+function _set_legacy_cephx_cipher {
+    local fsid=$1 config=$2 keyring=$3 opt
+    for opt in "auth_allowed_ciphers aes,aes256k" "auth_preferred_cipher aes"; do
+        $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$fsid" --config "$config" \
+            --keyring "$keyring" -- ceph mon set $opt \
+            || echo "[CEPHADM] 'ceph mon set $opt' not applied (option absent on this image?)"
+    done
+}
+
 # Install ceph: create a loopback device to be used as osd
 function create_osd_dev {
     sudo dd if=/dev/zero of=$TARGET_DEV_OSD_DIR/ceph-osd.img bs=1 count=0 seek="$CEPH_LOOPBACK_DISK_SIZE"
@@ -616,6 +636,7 @@ function install_ceph {
     bootstrap_config
     get_cephadm
     start_ceph
+    allow_legacy_cephx_cipher
 }
 
 function config_glance {
