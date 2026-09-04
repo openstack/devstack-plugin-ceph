@@ -46,6 +46,12 @@
     description: |
       Integration tests that runs with the ceph devstack plugin using ceph
       deployed using cephadm.
+    vars:
+      devstack_local_conf:
+        post-config:
+          $NOVA_CPU_CONF:
+            libvirt:
+              images_address_space_limit: 2
 
 
 - job:
