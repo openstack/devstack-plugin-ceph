@@ -937,6 +937,11 @@ function set_min_client_version {
     if [ ! -z "$CEPH_MIN_CLIENT_VERSION" ]; then
         $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid $FSID --config $CEPH_CONFIG \
             --keyring $CEPH_KEYRING -- ceph osd set-require-min-compat-client ${CEPH_MIN_CLIENT_VERSION}
+
+        if [[ "$MULTI_CEPH" == 'True' ]]; then
+            $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
+                --keyring $CEPH2_KEYRING -- ceph osd set-require-min-compat-client ${CEPH_MIN_CLIENT_VERSION}
+        fi
     fi
 }
 
