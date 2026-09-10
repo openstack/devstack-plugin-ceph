@@ -423,10 +423,15 @@ function add_pools {
 
     local -n POOLS=$1
     local MODE=$2
+    # Application to enable on each pool: "rbd" for RBD-backed services
+    # (Cinder, Glance, Nova) or "cephfs" for CephFS data pools (Manila).
+    local APP=$3
 
     [ "${#POOLS[@]}" -eq 0 ] && return;
     # return if mode is not valid (only replicated and erasure are supported)
     [ "$MODE" = "replicated" ] || [ "$MODE" = "erasure" ] || return
+    # the caller must state which application the pools serve
+    [ -n "$APP" ] || return
 
     if [ "$MODE" = "erasure" ]; then
         _ensure_ec_profile
@@ -449,9 +454,9 @@ function add_pools {
                 "$DEFAULT_PGP_NUM" replicated --autoscale-mode on
         fi
 
-        # set the application to the pool (which also means rbd init the pool)
+        # set the application to the pool (for rbd this also inits the pool)
         $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" --config "$CEPH_CONFIG" \
-            --keyring $CEPH_KEYRING -- ceph osd pool application enable "$pool" rbd
+            --keyring $CEPH_KEYRING -- ceph osd pool application enable "$pool" "$APP"
 
         if [[ "$MULTI_CEPH" == 'True' && $pool == "volumes" ]]; then
             $SUDO "$CEPHADM" shell --fsid $CEPH2_FSID --config $CEPH2_CONFIG \
@@ -469,9 +474,9 @@ function add_pools {
 # Utility: build caps according to the generated pools
 function build_caps {
     local CAPS=""
-    # Note if POOLS_EC is empty or doesn't exist, it expands to nothing and the
+    # Note if an array is empty or doesn't exist, it expands to nothing and the
     # loop result is backward compatible with the replicated only scenario
-    for pool in "${POOLS_REPLICATED[@]}" "${POOLS_EC[@]}"; do
+    for pool in "${POOLS_REPLICATED[@]}" "${POOLS_EC[@]}" "${POOLS_EC_CEPHFS[@]}"; do
         caps="allow rwx pool="$pool
         CAPS+=$caps,
     done
@@ -998,8 +1003,11 @@ function configure_ceph {
     if is_ceph_enabled_for_service manila; then
         SERVICES+=('cephfs')
         KEYS+=("client.$MANILA_CEPH_USER")
+        # The Manila EC pool is a CephFS data pool, so it needs the "cephfs"
+        # application rather than "rbd"; track it separately from the RBD EC
+        # pools (POOLS_EC) so add_pools can enable the right application.
         if [[ "$MANILA_EC_ENABLE" == "True" ]]; then
-            POOLS_EC+=($MANILA_EC_DATA_POOL)
+            POOLS_EC_CEPHFS+=($MANILA_EC_DATA_POOL)
         fi
     fi
 
@@ -1042,8 +1050,9 @@ function configure_ceph {
     [ "$ENABLE_CEPH_RBD_MIRROR" == "True" ] && SERVICES+=('rbdmirror')
 
     if [[ "$REMOTE_CEPH" = "False" ]]; then
-        add_pools POOLS_REPLICATED "replicated"
-        add_pools POOLS_EC "erasure"
+        add_pools POOLS_REPLICATED "replicated" "rbd"
+        add_pools POOLS_EC "erasure" "rbd"
+        add_pools POOLS_EC_CEPHFS "erasure" "cephfs"
         create_keys
     fi
     enable_services
