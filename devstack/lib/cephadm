@@ -115,6 +115,10 @@ CINDER_CEPH_USER=${CINDER_CEPH_USER:-cinder}
 CINDER_CEPH2_USER=${CINDER_CEPH2_USER:-cinder2}
 CINDER_CEPH_UUID=${CINDER_CEPH_UUID:-$(uuidgen)}
 CINDER_CEPH2_UUID=${CINDER_CEPH2_UUID:-$(uuidgen)}
+# The CINDER_CEPH_POOL replicated pool stores RBD metadata. New images,
+# including clones and snapshots, use the EC data pool by default.
+CINDER_EC_ENABLE=${CINDER_EC_ENABLE:-False}
+CINDER_EC_DATA_POOL=${CINDER_EC_DATA_POOL:-volumes_data}
 # Enables new features such as Clone v2 API, which allows proper handling of
 # deleting snapshots with child clone images.
 CEPH_MIN_CLIENT_VERSION=${CEPH_MIN_CLIENT_VERSION:-mimic}
@@ -122,9 +126,17 @@ CEPH_MIN_CLIENT_VERSION=${CEPH_MIN_CLIENT_VERSION:-mimic}
 # Cinder Backup DEFAULTS
 CINDER_BAK_CEPH_POOL=${CINDER_BAK_CEPH_POOL:-backups}
 CINDER_BAK_CEPH_USER=${CINDER_BAK_CEPH_USER:-cinder-bak}
+# The CINDER_BAK_CEPH_POOL replicated pool stores RBD metadata. New backup
+# images use the EC data pool by default.
+CINDER_BAK_EC_ENABLE=${CINDER_BAK_EC_ENABLE:-False}
+CINDER_BAK_EC_DATA_POOL=${CINDER_BAK_EC_DATA_POOL:-backups_data}
 
 # Nova DEFAUTLS
 NOVA_CEPH_POOL=${NOVA_CEPH_POOL:-vms}
+# The NOVA_CEPH_POOL replicated pool stores RBD metadata. New images use the
+# EC data pool by default.
+NOVA_EC_ENABLE=${NOVA_EC_ENABLE:-False}
+NOVA_EC_DATA_POOL=${NOVA_EC_DATA_POOL:-vms_data}
 
 [ -z "$SUDO" ] && SUDO=sudo
 
@@ -407,7 +419,9 @@ function add_osds {
 
 # True when any service requested an erasure-coded data pool.
 function _ec_enabled {
-    [[ "$GLANCE_EC_ENABLE" == "True" || "$MANILA_EC_ENABLE" == "True" ]]
+    [[ "$GLANCE_EC_ENABLE" == "True" || "$CINDER_EC_ENABLE" == "True" ||
+        "$CINDER_BAK_EC_ENABLE" == "True" ||
+        "$NOVA_EC_ENABLE" == "True" || "$MANILA_EC_ENABLE" == "True" ]]
 }
 
 # Create an EC profile that can place chunks on distinct OSDs of one host.
@@ -874,6 +888,42 @@ function _config_glance_ec_data_pool {
     fi
 }
 
+function _set_rbd_default_data_pool {
+    local metadata_pool=$1
+    local data_pool=$2
+
+    $SUDO "$CEPHADM" --image ${CONTAINER_IMAGE} shell --fsid "$FSID" \
+        --config "$CEPH_CONFIG" --keyring "$CEPH_KEYRING" -- \
+        rbd config pool set "$metadata_pool" \
+        rbd_default_data_pool "$data_pool"
+}
+
+function _set_ec_data_pool_defaults {
+    if is_ceph_enabled_for_service glance && \
+       [[ "$GLANCE_EC_ENABLE" == "True" ]] && _is_glance_rbd_store; then
+        _set_rbd_default_data_pool "$GLANCE_CEPH_POOL" \
+            "$GLANCE_EC_DATA_POOL"
+    fi
+
+    if is_ceph_enabled_for_service cinder && \
+       [[ "$CINDER_EC_ENABLE" == "True" ]]; then
+        _set_rbd_default_data_pool "$CINDER_CEPH_POOL" \
+            "$CINDER_EC_DATA_POOL"
+    fi
+
+    if is_ceph_enabled_for_service c-bak && \
+       [[ "$CINDER_BAK_EC_ENABLE" == "True" ]]; then
+        _set_rbd_default_data_pool "$CINDER_BAK_CEPH_POOL" \
+            "$CINDER_BAK_EC_DATA_POOL"
+    fi
+
+    if is_ceph_enabled_for_service nova && \
+       [[ "$NOVA_EC_ENABLE" == "True" ]]; then
+        _set_rbd_default_data_pool "$NOVA_CEPH_POOL" \
+            "$NOVA_EC_DATA_POOL"
+    fi
+}
+
 function config_glance {
     if [[ "$GLANCE_RGW_BACKEND" = "True" && "$ENABLE_CEPH_RGW" = "True" ]]; then
         # common glance accounts for swift
@@ -1026,6 +1076,9 @@ function configure_ceph {
     if is_ceph_enabled_for_service cinder; then
         POOLS_REPLICATED+=($CINDER_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
+        if [[ "$CINDER_EC_ENABLE" == "True" ]]; then
+            POOLS_EC+=($CINDER_EC_DATA_POOL)
+        fi
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             KEYS+=("client.$CINDER_CEPH2_USER")
         fi
@@ -1034,11 +1087,17 @@ function configure_ceph {
     if is_ceph_enabled_for_service c-bak; then
         POOLS_REPLICATED+=($CINDER_BAK_CEPH_POOL)
         KEYS+=("client.$CINDER_BAK_CEPH_USER")
+        if [[ "$CINDER_BAK_EC_ENABLE" == "True" ]]; then
+            POOLS_EC+=($CINDER_BAK_EC_DATA_POOL)
+        fi
     fi
 
     if is_ceph_enabled_for_service nova; then
         POOLS_REPLICATED+=($NOVA_CEPH_POOL)
         KEYS+=("client.$CINDER_CEPH_USER")
+        if [[ "$NOVA_EC_ENABLE" == "True" ]]; then
+            POOLS_EC+=($NOVA_EC_DATA_POOL)
+        fi
         if [[ "$MULTI_CEPH" == 'True' ]]; then
             KEYS+=("client.$CINDER_CEPH2_USER")
         fi
@@ -1054,6 +1113,7 @@ function configure_ceph {
         add_pools POOLS_EC "erasure" "rbd"
         add_pools POOLS_EC_CEPHFS "erasure" "cephfs"
         create_keys
+        _set_ec_data_pool_defaults
     fi
     enable_services
     client_config
